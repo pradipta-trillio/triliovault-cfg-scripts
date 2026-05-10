@@ -82,3 +82,4 @@ EOF
 chown nova:nova /tmp/pod-shared-${POD_NAME}/triliovault-wlm-ids.conf
 mkdir -p /var/log/triliovault/wlm-api /var/log/triliovault/wlm-workloads /var/log/triliovault/wlm-scheduler
 chown -R nova:nova /var/log/triliovault/
+rm -rf /var/log/triliovault-wlm

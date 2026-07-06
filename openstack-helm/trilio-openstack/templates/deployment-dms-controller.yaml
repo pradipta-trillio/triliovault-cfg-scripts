@@ -164,7 +164,8 @@ spec:
           hostPath:
             path: /lib/modules
         - name: run
-          emptyDir: {}
+          hostPath:
+            path: /run
         - name: dev
           hostPath:
             path: /dev

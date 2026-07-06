@@ -1,0 +1,19 @@
+# OpenStack-Helm Nova Override
+# Purpose: This injects the /var/lib/trilio host directory into the nova-compute pod
+#          with Bidirectional mount propagation. 
+# Effect:  Bypasses the MOSK readOnlyRootFilesystem restriction for this path, 
+#          allowing Contego to natively mount NFS backup targets (emulating Kolla).
+
+pod:
+  mounts:
+    nova_compute:
+      nova_compute:
+        volumeMounts:
+          - name: varlibtrilio
+            mountPath: /var/lib/trilio
+            mountPropagation: Bidirectional
+        volumes:
+          - name: varlibtrilio
+            hostPath:
+              path: /var/lib/trilio
+              type: DirectoryOrCreate

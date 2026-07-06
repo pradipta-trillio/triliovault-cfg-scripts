@@ -67,14 +67,22 @@ spec:
 {{ tuple $envAll "dms" $envAll.Values.pod.mounts.triliovault_dms.init_container | include "helm-toolkit.snippets.kubernetes_entrypoint_init_container" | indent 8 }}
         - name: dms-init
 {{ tuple $envAll "triliovault_dms_init" | include "helm-toolkit.snippets.image" | indent 10 }}
-{{ dict "envAll" $envAll "application" "triliovault" "container" "triliovault_dms_init" | include "helm-toolkit.snippets.kubernetes_container_security_context" | indent 10 }}
+          securityContext:
+            runAsUser: 0
+            privileged: true
           env:
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
           command:
-            - /tmp/triliovault-dms-init.sh
+            - /bin/sh
+            - -c
+            - |
+              mkdir -p /var/lib/trilio/triliovault-mounts
+              chown -R 42424:42424 /var/lib/trilio/triliovault-mounts
+              chmod 775 /var/lib/trilio/triliovault-mounts
+              /tmp/triliovault-dms-init.sh
           volumeMounts:
             - name: pod-tmp
               mountPath: /tmp
@@ -86,6 +94,8 @@ spec:
               mountPath: /run
             - name: pod-shared-triliovault-dms
               mountPath: /tmp/pod-shared-triliovault-dms
+            - name: trilio-mounts
+              mountPath: /var/lib/trilio
       containers:
         - name: triliovault-dms
 {{ tuple $envAll "triliovault_dms" | include "helm-toolkit.snippets.image" | indent 10 }}

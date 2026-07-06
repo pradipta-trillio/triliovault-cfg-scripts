@@ -28,8 +28,7 @@ chown -R 42424:42424 /var/lib/trilio /var/log/triliovault
 # IMPORTANT: node_id must match the Nova hypervisor hostname exactly (OS-EXT-SRV-ATTR:host).
 # In MOSK/OSH, Nova registers compute hosts with their FQDN (e.g. managed-worker-0.kaas-kubernetes-<id>)
 # but spec.nodeName (${NODE_NAME}) only gives the short k8s node name (e.g. managed-worker-0).
-# Since DMS pods run with hostNetwork:true, hostname -f returns the actual host FQDN — which
-# matches what Nova reports. This is equivalent to {{ ansible_fqdn }} in the Kolla deployment.
+
 DMS_NODE_FQDN=$(hostname -f)
 echo "[DMS init] Resolved node_id FQDN: ${DMS_NODE_FQDN} (k8s nodeName was: ${NODE_NAME})"
 

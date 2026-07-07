@@ -63,38 +63,9 @@ host_interface=$(ip -4 route list 0/0 | awk -F 'dev' '{ print $2; exit }' | awk 
 
 POD_IP=$(ip a s $host_interface | grep 'inet ' | awk '{print $2}' | awk -F "/" '{print $1}' | head -1)
 
-# Resolve the node FQDN so WLM host and DMS client node_id match the DMS server's
-# queue name (dms.<FQDN>). WLM is not on hostNetwork so hostname -f gives pod hostname.
-# Strategy 1: reverse-DNS on HOST_IP (injected via status.hostIP Downward API)
-WLM_NODE_FQDN=$(getent hosts "${HOST_IP}" 2>/dev/null | awk '{print $2; exit}')
-
-# Strategy 2: k8s API — query node Hostname/InternalDNS address via service account
-if [ -z "${WLM_NODE_FQDN}" ]; then
-  K8S_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token 2>/dev/null)
-  K8S_CACERT="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-  if [ -n "${K8S_TOKEN}" ]; then
-    WLM_NODE_FQDN=$(curl -s --cacert "${K8S_CACERT}" \
-      -H "Authorization: Bearer ${K8S_TOKEN}" \
-      "https://kubernetes.default.svc/api/v1/nodes/${NODE_NAME}" 2>/dev/null | \
-      python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    for a in data.get('status', {}).get('addresses', []):
-        if a.get('type') in ('InternalDNS', 'Hostname'):
-            print(a['address'])
-            break
-except Exception:
-    pass
-" 2>/dev/null)
-  fi
-fi
-
-# Strategy 3: fall back to short node name (routing will fail if DMS uses FQDN)
-if [ -z "${WLM_NODE_FQDN}" ]; then
-  echo "[WLM init] WARNING: Could not resolve FQDN for ${NODE_NAME}, falling back to short name"
-  WLM_NODE_FQDN="${NODE_NAME}"
-fi
+# With hostNetwork:true, hostname -f returns the actual host FQDN (same as DMS init).
+# This matches the DMS server's queue name (dms.<FQDN>) and Nova's hypervisor hostname.
+WLM_NODE_FQDN=$(hostname -f)
 echo "[WLM init] Resolved node FQDN: ${WLM_NODE_FQDN} (k8s nodeName was: ${NODE_NAME})"
 
 tee > /tmp/pod-shared-${POD_NAME}/triliovault-wlm-ids.conf << EOF

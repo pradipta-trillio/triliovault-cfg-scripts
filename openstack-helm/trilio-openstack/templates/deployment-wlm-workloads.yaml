@@ -60,6 +60,8 @@ spec:
 {{ tuple $envAll "triliovault" "wlm-workloads" | include "helm-toolkit.snippets.kubernetes_pod_anti_affinity" | indent 8 }}
       nodeSelector:
         {{ .Values.labels.wlm_workloads.node_selector_key }}: {{ .Values.labels.wlm_workloads.node_selector_value }}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       terminationGracePeriodSeconds: {{ .Values.pod.lifecycle.termination_grace_period.wlm_workloads.timeout | default "30" }}
 {{ if .Values.conf.triliovault.docker_registry_auth_enabled }}
       imagePullSecrets:
@@ -80,10 +82,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: HOST_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.hostIP
           command:
             - /tmp/triliovault-wlm-workloads-init.sh
           terminationMessagePath: /var/log/termination-log

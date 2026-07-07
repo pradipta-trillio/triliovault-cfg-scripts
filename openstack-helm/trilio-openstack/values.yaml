@@ -823,6 +823,10 @@ conf:
       enable_proxy_headers_parsing: True
     oslo_messaging_rabbit:
       rabbit_qos_prefetch_count: 64
+      heartbeat_in_pthread: False
+      amqp_durable_queues: True
+      rabbit_quorum_queue: True
+      rabbit_transient_quorum_queue: True
   my_ip:
     # my_ip and other related parameters can be set automatically through this interface name.
     # If this parameter is not set, then script will find interface name through default route.
@@ -903,6 +907,11 @@ conf:
       memcache_security_strategy: ENCRYPT
       interface: internal
       cafile: ""
+    oslo_messaging_rabbit:
+      heartbeat_in_pthread: False
+      amqp_durable_queues: True
+      rabbit_quorum_queue: True
+      rabbit_transient_quorum_queue: True
     alembic:
       script_location: /usr/share/workloadmgr/migrate_repo
       version_locations: /usr/share/workloadmgr/migrate_repo/versions
@@ -1127,7 +1136,7 @@ conf:
       worker_threads: 10
 
       # Set to 'quorum' if your RabbitMQ cluster uses quorum queues (>= 3.13)
-      # rabbitmq_queue_type: quorum
+      rabbitmq_queue_type: quorum
 
       # Barbican SSL verification
       barbican_ssl_verify: True

@@ -63,9 +63,20 @@ host_interface=$(ip -4 route list 0/0 | awk -F 'dev' '{ print $2; exit }' | awk 
 
 POD_IP=$(ip a s $host_interface | grep 'inet ' | awk '{print $2}' | awk -F "/" '{print $1}' | head -1)
 
+# Resolve the node FQDN so WLM's host value and DMS client node_id match the
+# DMS server's queue name (dms.<FQDN>). WLM is not on hostNetwork, so we
+# resolve via getent/DNS rather than hostname -f.
+# Falls back to the short NODE_NAME if DNS resolution fails.
+WLM_NODE_FQDN=$(getent hosts "${NODE_NAME}" 2>/dev/null | awk '{print $2; exit}')
+if [ -z "${WLM_NODE_FQDN}" ]; then
+  echo "[WLM init] WARNING: DNS resolution failed for ${NODE_NAME}, falling back to short name"
+  WLM_NODE_FQDN="${NODE_NAME}"
+fi
+echo "[WLM init] Resolved node FQDN: ${WLM_NODE_FQDN} (k8s nodeName was: ${NODE_NAME})"
+
 tee > /tmp/pod-shared-${POD_NAME}/triliovault-wlm-ids.conf << EOF
 [DEFAULT]
-host = ${NODE_NAME}
+host = ${WLM_NODE_FQDN}
 triliovault_hostnames = ${POD_IP}
 cloud_admin_user_id = $CLOUD_ADMIN_USER_ID
 cloud_admin_domain = $CLOUD_ADMIN_DOMAIN_ID
@@ -77,6 +88,9 @@ domain_name = $WLM_PROJECT_DOMAIN_ID
 [keystone_authtoken]
 project_domain_id = $WLM_PROJECT_DOMAIN_ID
 user_domain_id = $WLM_USER_DOMAIN_ID
+
+[dms_client]
+node_id = ${WLM_NODE_FQDN}
 
 EOF
 

@@ -60,6 +60,8 @@ spec:
       nodeSelector:
         {{ .Values.labels.wlm_cron.node_selector_key }}: {{ .Values.labels.wlm_cron.node_selector_value }}
       terminationGracePeriodSeconds: {{ .Values.pod.lifecycle.termination_grace_period.wlm_cron.timeout | default "30" }}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       hostPID: true
       hostIPC: true
 {{ if .Values.conf.triliovault.docker_registry_auth_enabled }}

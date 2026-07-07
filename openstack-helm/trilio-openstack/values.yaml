@@ -152,6 +152,9 @@ pod:
     anti:
       type:
         default: preferredDuringSchedulingIgnoredDuringExecution
+        "wlm-workloads": requiredDuringSchedulingIgnoredDuringExecution
+        "wlm_api": requiredDuringSchedulingIgnoredDuringExecution
+        "dms": requiredDuringSchedulingIgnoredDuringExecution
       topologyKey:
         default: kubernetes.io/hostname
       weight:

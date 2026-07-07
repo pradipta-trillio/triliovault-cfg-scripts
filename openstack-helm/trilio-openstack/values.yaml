@@ -868,10 +868,10 @@ conf:
       verify_ssl_path: /etc/ssl/certs/openstack-ca-bundle.pem
   wlm:
     DEFAULT:
-      api_workers: 4
+      api_workers: 1
       osapi_workloads_listen_port: 8780
       log_config_append: /etc/triliovault-wlm/wlm_logging.conf
-      workloads_workers: 4
+      workloads_workers: 1
       global_job_scheduler_override: False
       api_paste_config: /etc/triliovault-wlm/api-paste.ini
       rootwrap_config: /etc/triliovault-wlm/rootwrap.conf

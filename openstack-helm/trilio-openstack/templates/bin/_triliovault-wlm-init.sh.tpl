@@ -70,7 +70,7 @@ echo "[WLM init] Resolved node FQDN: ${WLM_NODE_FQDN} (k8s nodeName was: ${NODE_
 
 tee > /tmp/pod-shared-${POD_NAME}/triliovault-wlm-ids.conf << EOF
 [DEFAULT]
-host = ${K8S_POD_NAME}
+host = ${WLM_NODE_FQDN}
 triliovault_hostnames = ${POD_IP}
 cloud_admin_user_id = $CLOUD_ADMIN_USER_ID
 cloud_admin_domain = $CLOUD_ADMIN_DOMAIN_ID

@@ -58,6 +58,8 @@ spec:
 {{ tuple $envAll "triliovault" "wlm_api" | include "helm-toolkit.snippets.kubernetes_pod_anti_affinity" | indent 8 }}
       nodeSelector:
         {{ .Values.labels.wlm_api.node_selector_key }}: {{ .Values.labels.wlm_api.node_selector_value }}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       terminationGracePeriodSeconds: {{ .Values.pod.lifecycle.termination_grace_period.wlm_api.timeout | default "30" }}
 {{ if .Values.conf.triliovault.docker_registry_auth_enabled }}
       imagePullSecrets:

@@ -83,7 +83,7 @@ domain_name = $WLM_PROJECT_DOMAIN_ID
 project_domain_id = $WLM_PROJECT_DOMAIN_ID
 user_domain_id = $WLM_USER_DOMAIN_ID
 
-[dms_client]
+[client]
 node_id = ${WLM_NODE_FQDN}
 
 EOF

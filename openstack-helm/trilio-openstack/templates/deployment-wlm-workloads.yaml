@@ -78,6 +78,10 @@ spec:
 {{- end }}
             - name: POD_NAME
               value: "triliovault-wlm-workloads"
+            - name: K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
@@ -100,6 +104,10 @@ spec:
 {{ tuple $envAll $envAll.Values.pod.resources.wlm_workloads | include "helm-toolkit.snippets.kubernetes_resources" | indent 10 }}
 {{ dict "envAll" $envAll "application" "triliovault" "container" "triliovault_wlm_workloads" | include "helm-toolkit.snippets.kubernetes_container_security_context" | indent 10 }}
           env:
+            - name: K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: NODE_NAME
               valueFrom:
                 fieldRef:

@@ -70,7 +70,7 @@ echo "[WLM init] Resolved node shortname: ${WLM_NODE_SHORT}, FQDN: ${WLM_NODE_FQ
 
 tee > /tmp/pod-shared-${POD_NAME}/triliovault-wlm-ids.conf << EOF
 [DEFAULT]
-host = ${WLM_NODE_SHORT}
+host = ${WLM_NODE_FQDN}
 triliovault_hostnames = ${POD_IP}
 cloud_admin_user_id = $CLOUD_ADMIN_USER_ID
 cloud_admin_domain = $CLOUD_ADMIN_DOMAIN_ID

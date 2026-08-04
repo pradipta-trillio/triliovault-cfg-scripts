@@ -18,4 +18,11 @@ else
 fi
 
 oc -n trilio-openstack create -f operator-rbac.yaml
+
+# Adopt any RabbitMQ/Galera CRs left over from an older, pre-TVAULT-7517 operator
+# build (where they were templated as Helm hooks and so never got Helm ownership
+# metadata) before the operator's Helm engine tries to reconcile them as normal
+# templated resources - see adopt_legacy_hook_resources.sh for the full story.
+./adopt_legacy_hook_resources.sh ./tvo-operator-inputs.yaml
+
 oc -n trilio-openstack apply -f ./tvo-operator-inputs.yaml

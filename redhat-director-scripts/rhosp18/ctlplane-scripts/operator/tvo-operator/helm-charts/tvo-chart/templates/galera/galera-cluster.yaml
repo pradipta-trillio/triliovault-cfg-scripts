@@ -8,9 +8,6 @@ metadata:
   labels:
     app: galera
     component: database
-  annotations:
-    helm.sh/hook: post-install,post-upgrade
-    helm.sh/hook-weight: "-15"
 spec:
   # Galera cluster configuration
   replicas: {{ .Values.database.galera.replicas }}

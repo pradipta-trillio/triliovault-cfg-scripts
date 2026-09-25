@@ -220,3 +220,34 @@ no credentials in them. Pass `values_overrides/no_ceph.yaml` instead.
   to the terminal. `install_trilio.sh` invokes every one of them as
   `bash ./script.sh` specifically to drop that xtrace, and pipes their output
   through a redaction filter. Keep both if you touch `run_util`.
+
+## db-init crash-loops on a re-install: CREATE USER IF NOT EXISTS
+
+`helm-toolkit.scripts.db_init` (`charts/helm-toolkit/templates/scripts/_db-init.py.tpl`)
+does three things in order: `CREATE DATABASE IF NOT EXISTS`,
+`CREATE USER IF NOT EXISTS '<user>'@'%' IDENTIFIED BY '<password>'`, and then a
+connection test **as that user**.
+
+`IF NOT EXISTS` is the trap. For a user that already exists it is a complete
+no-op — the password is *not* updated — so the connection test at the end fails
+and the job raises:
+
+```
+CRITICAL OpenStack-Helm DB Init Could not connect to database as user
+```
+
+The job pod then crash-loops. The DB users are `dmapi` and `workloadmgr`
+(databases of the same names, host `mariadb`); `helm delete` does not drop
+either, and `uninstall.sh` deletes the db-drop *jobs* rather than letting them
+run, so they survive an uninstall.
+
+This was latent for as long as `triliovault_passwords.yaml` was committed:
+every install everywhere used the same passwords, so an existing user always
+matched. Untracking that file (each install now generates fresh passwords) made
+it reachable on any cluster that had T4O before.
+
+`utils/reset_db_passwords.sh` fixes it with `ALTER USER`, which changes only the
+passwords and leaves the databases and their contents alone.
+`install_trilio.sh` runs it as the `db_users` step, between `passwords` and
+`install`. Do not "fix" this by enabling the db-drop jobs on uninstall — that
+would destroy workload metadata on what is supposed to be an upgrade path.

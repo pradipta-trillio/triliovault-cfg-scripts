@@ -62,6 +62,14 @@ if you use an NFS backup target, `make` and `jq`). The Horizon plugin
 - **`admin_creds.yaml`, `ceph.yaml` and `triliovault_passwords.yaml` are
   generated and gitignored.** The committed `.example` files next to them show
   the shape.
+- **Re-installing over an existing database needs a password reset.** A
+  `helm delete` does not drop the `dmapi` / `workloadmgr` MariaDB users, and
+  helm-toolkit's db-init uses `CREATE USER IF NOT EXISTS`, which silently leaves
+  an existing user's old password in place — then fails its own connection test
+  with `Could not connect to database as user` and crash-loops. The installer's
+  `db_users` step runs `ALTER USER` to close that gap. To do it by hand:
+  `bash trilio-openstack/utils/reset_db_passwords.sh` (non-destructive; add
+  `--dry-run` to see what it would change).
 - **The version override file you pick *is* tracked in git.** The installer
   rewrites its image tags in place and shows you the diff. Do not commit a
   lab-specific tag.

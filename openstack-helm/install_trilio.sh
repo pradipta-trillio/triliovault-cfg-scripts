@@ -86,6 +86,11 @@ banner() {
 }
 
 step_ok()   { say "  ${GREEN}OK${NC}       $*"; }
+
+# Shown under any question the operator cannot work out from the cluster.
+support_hint() {
+  say "  ${YELLOW}If you are unsure, stop and ask Trilio support rather than guessing.${NC}"
+}
 step_skip() { say "  ${YELLOW}SKIPPED${NC}  $*"; }
 step_fail() { say "  ${RED}FAILED${NC}   $*"; }
 
@@ -229,29 +234,48 @@ ask_yesno() {
   log_answer "$var"
 }
 
+# Menu items are "label|note", or the literal "--separator--|<heading>" for a
+# non-selectable divider. The prompt asks for a NUMBER and shows the default as
+# a number, so nobody is invited to retype a long filename — but a typed label
+# is accepted too rather than bounced.
 ask_menu() {
   local var="$1" prompt="$2" def="$3"; shift 3; [[ "$1" == "--" ]] && shift
-  local items=("$@") i reply
-  if [[ -n "${!var:-}" ]]; then say "  $prompt ${BOLD}${!var}${NC} (preset)"; return 0; fi
+  local items=("$@") i reply label note def_idx="" n=0
+  declare -a choices=()
+
+  if [[ -n "${!var:-}" ]]; then say "  $prompt ${BOLD}${!var}${NC} (preset)"; log_answer "$var"; return 0; fi
   if ! interactive; then
     printf -v "$var" '%s' "$def"; say "  $prompt ${BOLD}$def${NC} (default)"
     log_answer "$var"; return 0
   fi
+
   say "  $prompt"
   for i in "${!items[@]}"; do
-    local label="${items[$i]%%|*}" note="${items[$i]#*|}"
+    label="${items[$i]%%|*}"; note="${items[$i]#*|}"
     [[ "$note" == "${items[$i]}" ]] && note=""
-    printf '    %2d) %-28s %s%s\n' "$((i+1))" "$label" "$note" \
-      "$( [[ "$label" == "$def" ]] && printf '  %b(default)%b' "$GREEN" "$NC" )"
-  done
-  while true; do
-    read -r -p "  choice [${def}]: " reply
-    if [[ -z "$reply" ]]; then printf -v "$var" '%s' "$def"; break; fi
-    if [[ "$reply" =~ ^[0-9]+$ ]] && (( reply >= 1 && reply <= ${#items[@]} )); then
-      printf -v "$var" '%s' "${items[$((reply-1))]%%|*}"; break
+    if [[ "$label" == "--separator--" ]]; then
+      printf '        %b%s%b\n' "$YELLOW" "$note" "$NC"
+      continue
     fi
-    echo "    pick 1-${#items[@]}, or press enter for the default"
+    n=$((n + 1)); choices+=("$label")
+    [[ "$label" == "$def" ]] && def_idx="$n"
+    printf '    %2d) %-28s %s%s\n' "$n" "$label" "$note" \
+      "$( [[ "$label" == "$def" ]] && printf '  %b<- default%b' "$GREEN" "$NC" )"
   done
+
+  while true; do
+    read -r -p "  Enter 1-${n}${def_idx:+ [$def_idx]}: " reply
+    if [[ -z "$reply" && -n "$def_idx" ]]; then printf -v "$var" '%s' "$def"; break; fi
+    if [[ "$reply" =~ ^[0-9]+$ ]] && (( reply >= 1 && reply <= n )); then
+      printf -v "$var" '%s' "${choices[$((reply-1))]}"; break
+    fi
+    # Be forgiving: someone who types the label instead of the number meant it.
+    local c found=""
+    for c in "${choices[@]}"; do [[ "$c" == "$reply" ]] && { found="$c"; break; }; done
+    if [[ -n "$found" ]]; then printf -v "$var" '%s' "$found"; break; fi
+    say "    ${YELLOW}Enter a number from 1 to ${n}${def_idx:+, or press Enter for $def_idx}.${NC}"
+  done
+  say "    selected: ${BOLD}${!var}${NC}"
   log_answer "$var"
 }
 
@@ -411,7 +435,7 @@ detect_and_ask() {
   # MOSK ships the OpenStackDeployment CRD; vanilla OpenStack Helm does not.
   local flavour_def="helm"
   kexists crd openstackdeployments.lcm.mirantis.com && flavour_def="mosk"
-  ask_menu T4OI_FLAVOUR "Cloud type:" "$flavour_def" -- \
+  ask_menu T4OI_FLAVOUR "Select your cloud type:" "$flavour_def" -- \
     "helm|vanilla OpenStack Helm" \
     "mosk|Mirantis OpenStack for Kubernetes"
   FLAVOUR="$T4OI_FLAVOUR"
@@ -430,7 +454,7 @@ detect_and_ask() {
 
   # --- image tags --------------------------------------------------------
   banner "Image tags"
-  ask_image_tags
+  ask_image_tags || die "image tag/registry not accepted"
 
   # --- everything else ---------------------------------------------------
   banner "Cloud details"
@@ -452,6 +476,10 @@ detect_and_ask() {
   local pub_def="" int_def="cluster.local"
   pub_def="$(kubectl -n "$OS_NAMESPACE" get ingress keystone \
               -o jsonpath='{.spec.rules[0].host}' 2>/dev/null | sed 's/^keystone\.//')"
+  say ""
+  say "  Domain names, as used by your OpenStack endpoints. Check them with"
+  say "  'openstack endpoint list', or grep domain_name in your deployment yaml."
+  support_hint
   ask T4OI_INTERNAL_DOMAIN "Kubernetes internal domain name" "$int_def"
   ask T4OI_PUBLIC_DOMAIN   "Public domain name of the cloud" "$pub_def"
 
@@ -463,6 +491,9 @@ detect_and_ask() {
     NEED_PULL_SECRET=no
   fi
   if [[ "$NEED_PULL_SECRET" == yes ]]; then
+    say ""
+    say "  Credentials for the private Trilio image registry."
+    say "  ${YELLOW}Trilio Sales/Support issue these — they are not your dockerhub login.${NC}"
     ask        T4OI_REGISTRY_USERNAME "Trilio registry (dockerhub) username" ""
     ask_secret T4OI_REGISTRY_PASSWORD "Trilio registry (dockerhub) password"
   fi
@@ -527,10 +558,19 @@ select_version_file() {
   # Show each option with the tag it currently carries, so the choice is
   # informative rather than a guess from the filename.
   local menu=()
-  for f in "${mine[@]}" "${other[@]}"; do
-    menu+=("$f|$(current_tag_of "$VO_DIR/$f")")
-  done
-  ask_menu T4OI_VERSION_FILE "Cloud version / values override file:" "$def" -- "${menu[@]}"
+  for f in "${mine[@]}"; do menu+=("$f|$(current_tag_of "$VO_DIR/$f")"); done
+  if (( ${#other[@]} )); then
+    # Never hide the other flavour's files, but make it obvious they are not
+    # for this cloud — picking one is almost always a mistake.
+    local othername="MOSK"; [[ "$FLAVOUR" == mosk ]] && othername="OpenStack Helm"
+    menu+=("--separator--|--- $othername files (not for this cloud) ---")
+    for f in "${other[@]}"; do menu+=("$f|$(current_tag_of "$VO_DIR/$f")"); done
+  fi
+
+  say "  This is your cloud's OpenStack/MOSK release. It decides which image"
+  say "  tags and base images are used."
+  support_hint
+  ask_menu T4OI_VERSION_FILE "Select your cloud version:" "$def" -- "${menu[@]}"
   VERSION_FILE="$T4OI_VERSION_FILE"
   [[ -f "$VO_DIR/$VERSION_FILE" ]] || die "no such version file: $VO_DIR/$VERSION_FILE"
 }
@@ -565,16 +605,44 @@ ask_image_tags() {
   local cur_tag cur_reg
   cur_tag="$(current_tag_of "$f")"; cur_reg="$(current_registry_of "$f")"
 
-  say "  $VERSION_FILE currently uses:"
+  say "  $VERSION_FILE currently ships:"
   say "    registry : ${BOLD}${cur_reg:-<unset>}${NC}"
   say "    tag      : ${BOLD}${cur_tag:-<unset>}${NC}"
   say ""
+  say "  The tag identifies the T4O build to install, e.g. ${BOLD}${cur_tag:-6.2.0-stable-1}${NC}."
+  support_hint
+  say ""
 
-  ask T4OI_IMAGE_REGISTRY "Trilio image registry prefix" "${cur_reg:-docker.io/trilio}"
-  ask T4OI_IMAGE_TAG      "Trilio image tag"             "${cur_tag}"
+  # Tag first. The registry is asked second and behind a yes/no, because it
+  # almost never changes and putting it first invites typing the tag into it —
+  # which installs cleanly and then fails as ImagePullBackOff minutes later.
+  ask T4OI_IMAGE_TAG "Trilio image tag" "${cur_tag}"
 
   [[ "$T4OI_IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]] \
     || die "'$T4OI_IMAGE_TAG' is not a valid container image tag"
+
+  if [[ -n "${T4OI_IMAGE_REGISTRY:-}" ]]; then
+    say "  Registry: ${BOLD}${T4OI_IMAGE_REGISTRY}${NC} (preset)"
+  else
+    local use_mirror=""
+    say ""
+    say "  Images are pulled from ${BOLD}${cur_reg:-docker.io/trilio}${NC}."
+    ask_yesno use_mirror "Pull them from a local mirror instead?" no
+    if [[ "$use_mirror" == yes ]]; then
+      ask T4OI_IMAGE_REGISTRY "Mirror registry prefix (host[:port]/path)" "${cur_reg:-docker.io/trilio}"
+    else
+      T4OI_IMAGE_REGISTRY="${cur_reg:-docker.io/trilio}"
+    fi
+  fi
+
+  # A registry prefix is a host, optionally with a port and a path. Catch the
+  # classic slip of a tag pasted in here before it reaches the cluster.
+  if [[ "$T4OI_IMAGE_REGISTRY" != *[./:]* ]]; then
+    err "'$T4OI_IMAGE_REGISTRY' does not look like a registry — no '.', ':' or '/' in it."
+    err "A registry prefix looks like 'docker.io/trilio' or 'harbor.corp:5000/trilio'."
+    err "Did you mean to type that as the image ${BOLD}tag${NC}?"
+    return 1
+  fi
 
   # A tag that does not carry the version-file suffix is usually a slip, but it
   # is legitimate for a one-off hotfix build. Offer, do not impose.

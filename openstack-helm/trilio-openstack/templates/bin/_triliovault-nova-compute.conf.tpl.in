@@ -1,0 +1,5 @@
+# Placeholder. Replaced at install time with the cloud's nova-compute.conf
+# (secret/nova-etc in the openstack namespace) by utils/get_admin_creds.sh or
+# utils/get_admin_creds_mosk.sh, either directly or via ../../install_trilio.sh.
+#
+# Do not commit a rendered copy of this file. Edit the .in stub only.

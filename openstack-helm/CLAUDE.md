@@ -5,50 +5,68 @@ Helm charts for deploying TrilioVault (T4O) on OpenStack Helm and MOSK (Mirantis
 T4O is deployed as a single Helm release (`trilio-openstack`) that creates all required Kubernetes workloads, jobs, and config maps.
 
 ## Supported Versions
-| Platform | OpenStack Release |
-|----------|------------------|
-| OpenStack Helm | Antelope, Bobcat, Epoxy |
-| MOSK 22.x | Victoria, Yoga |
+| Platform | OpenStack Release | Version override file |
+|----------|-------------------|-----------------------|
+| OpenStack Helm | Antelope | `2023.1.yaml` |
+| OpenStack Helm | Bobcat (current default) | `2023.2.yaml` |
+| MOSK 25.1 | Caracal / 2024.1 (current default) | `mosk25.1.yaml` |
+| MOSK 22.2–22.5 | Victoria, Yoga (legacy) | `mosk22.*.yaml` |
+
+There is **no** `2025.x` OpenStack Helm file and no `mosk25.2.yaml`. Note the
+MOSK naming: `mosk25.1`, no underscore, two-digit year.
 
 ## Directory Structure
 
 ```
 openstack-helm/
-├── Makefile                          # Build targets (lint, package, test)
+├── install_trilio.sh                 # ENTRY POINT — interactive installer (steps 3–10)
+├── installer-answers.example.env     # answer-file template for --answers
+├── Makefile                          # upstream OSH targets (lint-%, build-%, package-%)
+├── README.md                         # install doc; automated path first, manual after
+├── scripts/                          # 6.1/5.2 → 6.2 UPGRADE tooling (not install)
+│   ├── collect_backup_targets_osh.sh     # run BEFORE helm upgrade
+│   ├── migrate_backup_targets_osh.sh     # run AFTER
+│   ├── cleanup_legacy_mounts_osh.sh      # self-destructing privileged DaemonSet
+│   └── upgrade-process.md                # the accurate, modern runbook
 ├── charts/
-│   ├── helm-toolkit/                 # Upstream OpenStack Helm shared library
-│   │   └── templates/
-│   │       ├── endpoints/            # Endpoint lookup helpers (_.tpl)
-│   │       ├── manifests/            # Reusable K8s resource generators (_.tpl)
-│   │       │   ├── _job-db-*.tpl     # Database init/sync jobs
-│   │       │   ├── _job-ks-*.tpl     # Keystone registration jobs
-│   │       │   └── _job-rabbit-init.yaml.tpl
-│   │       ├── scripts/              # Shell script templates for jobs
-│   │       ├── snippets/             # Reusable pod/container config snippets
-│   │       └── utils/                # Template utilities (_to_oslo_conf.tpl, etc.)
-│   │
-│   └── trilio-openstack/             # TrilioVault Helm chart
-│       ├── Chart.yaml                # Chart metadata and version
-│       ├── values.yaml               # Default values — primary config reference
-│       ├── templates/                # Kubernetes resource templates
-│       │   └── bin/                  # Init script templates for jobs/pods
-│       │       ├── _triliovault-cloudrc.tpl
-│       │       ├── _triliovault-ceph.conf.tpl
-│       │       └── (other init scripts)
-│       ├── values_overrides/         # Platform-specific value files
-│       │   ├── conf_triliovault.yaml # T4O service configuration
-│       │   ├── admin_creds.yaml      # Keystone admin credentials (generated)
-│       │   ├── ceph.yaml             # Ceph backend override
-│       │   ├── tls_public_endpoint.yaml
-│       │   └── victoria-ubuntu_focal.yaml
-│       ├── files/                    # Static files (e.g., s3-cert.pem)
-│       └── utils/                    # Deployment utility scripts
-│           ├── install.sh            # Main Helm install entry point
-│           ├── uninstall.sh
-│           ├── get_admin_creds.sh    # Extract Keystone admin credentials
-│           ├── get_ceph.sh           # Extract Ceph cluster config
-│           └── create_image_pull_secret.sh
+│   └── helm-toolkit/                 # vendored upstream library chart (2024.2.0)
+│
+└── trilio-openstack/                 # THE chart (note: NOT under charts/)
+    ├── Chart.yaml
+    ├── Makefile                      # materialises bin/*.tpl for the parent init-%
+    ├── values.yaml                   # single source of truth for defaults
+    ├── requirements.yaml             # file://../charts/helm-toolkit — resolves
+    │                                 #   only when `helm dep up` runs from openstack-helm/
+    ├── manifest.yaml                 # dead artefact: a `helm get manifest` dump from 2022
+    ├── templates/
+    │   ├── bin/                      # entrypoint/init .tpl files; four are GENERATED
+    │   │                             #   (see the *.tpl.in convention below)
+    │   ├── configmap-{bin,etc}-*.yaml
+    │   ├── daemonset-*.yaml, deployment-*.yaml, job-*.yaml, secret-*.yaml
+    │   └── ingress-*.yaml, service-*.yaml, network_policy_*.yaml
+    ├── values_overrides/             # flat; mixes version files and functional overrides
+    │   ├── 2023.1.yaml 2023.2.yaml   #   version files (OpenStack Helm)
+    │   ├── mosk25.1.yaml mosk22.*    #   version files (MOSK)
+    │   ├── keystone.yaml ingress.yaml ingress_mosk.yaml
+    │   ├── ceph.yaml no_ceph.yaml tls_public_endpoint.yaml db_drop.yaml
+    │   └── *.example                 #   shapes for the gitignored generated files
+    └── utils/                        # the scripts that do the real work
+        ├── restore_templates.sh      #   materialise bin/*.tpl from *.tpl.in
+        ├── create_rabbitmq.sh        #   MUST precede get_admin_creds*
+        ├── get_admin_creds{,_mosk}.sh  get_ceph{,_mosk}.sh
+        ├── generate_passwords.sh  create_image_pull_secret.sh
+        ├── sync_nova_compute.sh      #   destructive marker injection
+        ├── install{,_mosk}.sh        #   manual fallback; differ by ONE --values line
+        ├── uninstall.sh  wait_for_pods.sh  add_dns_entry.sh
+        └── upgrade{,6.2}.sh  collect_rabbitmq_creds.sh  render_templates.sh
 ```
+
+**Every script in `utils/` assumes CWD == `utils/`** — they `cd ../` or
+`cd ../../` and use relative paths. Run from anywhere else they write to the
+wrong place without complaining. `install_trilio.sh` calls each one in a
+subshell (`( cd "$UTILS_DIR" && bash ./x.sh )`) for exactly this reason.
+The one exception is `collect_rabbitmq_creds.sh`, which expects CWD ==
+`openstack-helm/`.
 
 ## Technology Stack
 - **Helm 3**: Kubernetes package manager; all resources are Helm templates
@@ -80,16 +98,42 @@ openstack-helm/
 Always override via `values_overrides/` files rather than editing `values.yaml` directly.
 
 ### Deployment Flow
-1. Run `utils/get_admin_creds.sh` → produces `values_overrides/admin_creds.yaml`
-2. Run `utils/get_ceph.sh` → produces `values_overrides/ceph.yaml` (if Ceph backend)
-3. Run `utils/create_image_pull_secret.sh` → registry credentials
-4. Run `utils/install.sh` with the appropriate override files:
-   ```
-   helm install trilio-openstack charts/trilio-openstack \
-     -f values_overrides/conf_triliovault.yaml \
-     -f values_overrides/admin_creds.yaml \
-     [-f values_overrides/ceph.yaml]
-   ```
+
+**The entry point is `openstack-helm/install_trilio.sh`** — an interactive
+wrapper covering documented steps 3–10. Prefer changing it over adding another
+one-off script under `utils/`. The scripts in `utils/` remain the manual
+fallback and still do the real work; the wrapper orders them and picks the
+per-cloud variant.
+
+Order is a dependency order, not a preference:
+
+```
+restore_templates.sh        # materialise templates/bin/*.tpl from *.tpl.in
+kubectl create namespace trilio-openstack
+kubectl label nodes ... triliovault-control-plane=enabled
+create_rabbitmq.sh          # MUST precede get_admin_creds*: it creates
+                            # secret/rabbitmq-default-user, which that reads
+create_image_pull_secret.sh <user> <pass>
+(rewrite images.tags in the chosen values_overrides/<version>.yaml)
+get_admin_creds.sh | get_admin_creds_mosk.sh <internal_domain> <public_domain>
+get_ceph.sh | get_ceph_mosk.sh          # only when Ceph backs nova/cinder
+generate_passwords.sh                   # only when the file does not exist yet
+add_dns_entry.sh <ip> <fqdn>            # MOSK, optional
+helm upgrade --install ...              # see install.sh for the canonical shape
+wait_for_pods.sh trilio-openstack
+```
+
+Per-cloud variants — picking the wrong one half-works silently:
+
+| Concern | OpenStack Helm | MOSK |
+|---|---|---|
+| admin creds | `get_admin_creds.sh` (CA from `trilio-ca-cert`) | `get_admin_creds_mosk.sh` (CA from `keystone-tls-public`, also emits `conf.triliovault.cloud_admin_*`) |
+| ceph | `get_ceph.sh` (`cinder`, `cinder-volume-rbd-keyring`, cm `ceph-etc`) | `get_ceph_mosk.sh` (`nova`, `nova-rbd-keyring`, secret `libvirt-etc`) |
+| ingress class | `ingress.yaml` → `nginx` | `ingress_mosk.yaml` → `openstack-ingress-nginx` |
+| version file | `2023.1.yaml`, `2023.2.yaml` | `mosk25.1.yaml` |
+
+`trilio-ca-cert` is **not** a stock OpenStack Helm secret — it is created by
+hand, and only the non-MOSK `get_admin_creds.sh` reads it.
 
 ### helm-toolkit Usage
 Never duplicate boilerplate Kubernetes YAML. Use the library helpers:
@@ -102,3 +146,77 @@ Never duplicate boilerplate Kubernetes YAML. Use the library helpers:
 ### Adding a New Config Option
 1. Add the default value under `conf:` in `values.yaml`
 2. The `_to_oslo_conf.tpl` utility automatically renders it into the config map — no template changes needed unless the section is entirely new.
+
+## Generated files: the *.tpl.in convention (do not undo this)
+
+Four files under `templates/bin/` are **generated at install time and not
+committed** — they carry the cloud's ceph mon addresses, its
+`nova-compute.conf`, and the nova init script injected into the datamover.
+They are gitignored; the committed sources are `*.tpl.in` stubs.
+
+| Generated (gitignored) | Committed source | Written by |
+|---|---|---|
+| `_triliovault-ceph.conf.tpl` | `_triliovault-ceph.conf.tpl.in` | `get_ceph*.sh` |
+| `_triliovault-nova-compute.conf.tpl` | `_triliovault-nova-compute.conf.tpl.in` | `get_admin_creds*.sh` |
+| `_triliovault-datamover-init.sh.tpl` | `_triliovault-datamover-init.sh.tpl.in` | `sync_nova_compute.sh` |
+| `_triliovault-datamover.sh.tpl` | `_triliovault-datamover.sh.tpl.in` | `sync_nova_compute.sh` |
+
+**A missing generated file is a hard `helm template` failure, not an empty
+string.** `configmap-etc-*.yaml` pulls each one in through
+`helm-toolkit.utils.template`, which resolves to `include <template path>`, and
+Helm registers every file under `templates/` as a named template keyed by its
+path. Deleting one gives
+`no template "..._triliovault-nova-compute.conf.tpl" associated with template "gotpl"`.
+So every path that renders the chart must materialise them first:
+`utils/restore_templates.sh` does it, `install_trilio.sh` calls it in preflight,
+and the chart's own `Makefile` calls it so the parent `init-%`/`lint-%`/
+`package-%` targets work on a bare clone.
+
+**`sync_nova_compute.sh` is destructive by design.** It injects at the literal
+`<INJECT_INIT_FILES>` / `<INJECT_CONFIG_FILES>` marker lines and moves the
+result over the template, consuming the marker. Without a restore first, a
+second run finds no marker, injects nothing, reports success, and ships a
+datamover with no `--config-file` flags. That is why `restore_templates.sh`
+restores those two **unconditionally** while only stubbing the other two when
+absent, and why `install_trilio.sh` asserts the markers are *gone* afterwards.
+
+## Version override files
+
+`values_overrides/` is flat and mixes two kinds of file. A **version file** is
+detected by content, never by name:
+
+```bash
+grep -lE '^[[:space:]]+triliovault_wlm_api:[[:space:]]*\S' values_overrides/*.yaml
+```
+
+That matches exactly the eleven release files and none of the ten functional
+overrides. Name-based rules (`mosk*`, `20*`, a denylist) break as soon as
+someone adds `epoxy.yaml`. There is no `2025.x` Helm file and no
+`mosk25.2.yaml`; the MOSK file is `mosk25.1.yaml` — no underscore, two-digit
+year.
+
+Only `2023.2.yaml` and `mosk25.1.yaml` define `triliovault_dms` /
+`triliovault_dms_init`. The other nine predate DMS and omit them, so DMS
+silently falls back to the stale `shruti-6.1.0-bobcat-2` default in
+`values.yaml`. `install_trilio.sh` **appends** those keys when missing rather
+than skipping them.
+
+## Ceph is enabled by default
+
+`values.yaml` sets `ceph.enabled: true` with `keyring: ""`. Omitting
+`ceph.yaml` from the `--values` list therefore does *not* disable Ceph — the
+chart still renders the keyring secret and the `ceph.conf` configmap entry with
+no credentials in them. Pass `values_overrides/no_ceph.yaml` instead.
+
+## Credentials
+
+- `admin_creds.yaml`, `ceph.yaml` and `triliovault_passwords.yaml` are
+  generated and gitignored; the committed `.example` files show the shape.
+- Historic note: real passwords, a live ceph keyring and lab mon IPs were
+  committed to this directory and **remain in git history**. Untracking them
+  stopped the bleeding; rotating them is a separate task.
+- Four `utils/` scripts are `#!/bin/bash -x`. Running them through the shebang
+  echoes the dockerhub password, the MariaDB root password and the ceph keyring
+  to the terminal. `install_trilio.sh` invokes every one of them as
+  `bash ./script.sh` specifically to drop that xtrace, and pipes their output
+  through a redaction filter. Keep both if you touch `run_util`.

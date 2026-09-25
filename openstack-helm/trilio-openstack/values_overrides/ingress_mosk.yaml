@@ -1,0 +1,17 @@
+## MOSK ingress class.
+##
+## Pass this INSTEAD OF ingress.yaml on MOSK clouds. MOSK runs its ingress
+## controller in the "openstack-ingress-nginx" class rather than the plain
+## "nginx" class that vanilla OpenStack Helm uses. With the wrong class the
+## wlm-api and datamover-api Ingress objects are created but never programmed:
+## no address is assigned, the endpoints are unreachable, and nothing logs an
+## error anywhere.
+network:
+  wlm_api:
+    ingress:
+      classes:
+        namespace: "openstack-ingress-nginx"
+  datamover_api:
+    ingress:
+      classes:
+        namespace: "openstack-ingress-nginx"

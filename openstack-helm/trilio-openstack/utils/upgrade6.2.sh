@@ -1,5 +1,10 @@
 #!/bin/bash -x
 
+# The four generated templates/bin/*.tpl files are not committed (see
+# ../../.gitignore). helm cannot render without them, so materialise any that
+# are missing from the committed *.tpl.in stubs. Rendered copies are kept.
+"$(dirname "$0")/restore_templates.sh" --if-missing
+
 # upgrade6.2.sh
 # Safely upgrades T4O from 6.1 to 6.2.
 # 

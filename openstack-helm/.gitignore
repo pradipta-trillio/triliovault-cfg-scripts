@@ -73,3 +73,39 @@ releasenotes/build
 logs/
 tmp/
 
+
+# ---------------------------------------------------------------------------
+# Trilio install artefacts (install_trilio.sh and trilio-openstack/utils/*)
+# ---------------------------------------------------------------------------
+# Emitted by install_trilio.sh. Several of these hold live credentials:
+#   .install_state.answers   recorded answers (no passwords, but cloud details)
+#   .install-render.yaml     the full rendered manifests, secrets included
+#   .coredns-backup-*.yaml   a copy of the cluster's CoreDNS configmap
+.install.generated.sh
+.install_state
+.install_state.*
+.install-render.yaml
+.coredns-backup-*.yaml
+install-*.log
+
+# Rendered from the committed *.tpl.in stubs at install time. These carry the
+# cloud's ceph mon addresses, nova-compute.conf and the injected nova init
+# script, so they must never be committed. A missing file is a hard
+# `helm template` failure (helm-toolkit.utils.template includes them by path),
+# so install_trilio.sh materialises them from the .in before anything else.
+trilio-openstack/templates/bin/_triliovault-ceph.conf.tpl
+trilio-openstack/templates/bin/_triliovault-nova-compute.conf.tpl
+trilio-openstack/templates/bin/_triliovault-datamover-init.sh.tpl
+trilio-openstack/templates/bin/_triliovault-datamover.sh.tpl
+
+# Generated values overrides — these hold live credentials. Committed
+# counterparts are the *.example files next to them.
+trilio-openstack/values_overrides/admin_creds.yaml
+trilio-openstack/values_overrides/ceph.yaml
+trilio-openstack/values_overrides/triliovault_passwords.yaml
+trilio-openstack/values_overrides/rabbitmq_upgrade_creds.yaml
+# --rotate-passwords keeps a timestamped copy of the old file next to it.
+trilio-openstack/values_overrides/*.yaml.bak-*
+
+# create_rabbitmq.sh scratch file; only survives a crash.
+trilio-openstack/utils/rabbitmq-trilio.yaml

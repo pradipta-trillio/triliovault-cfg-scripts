@@ -1,4 +1,0 @@
-ceph:
-  enabled: true
-  rbd_user: cinder
-  keyring: AQALO8lnsmGqHxAA03frNuiDyIFOx8QYFgluhA==

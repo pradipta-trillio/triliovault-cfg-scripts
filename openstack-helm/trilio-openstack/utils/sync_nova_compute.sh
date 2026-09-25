@@ -11,6 +11,12 @@ NOVA_CM="nova-bin"
 DATAMOVER_MAIN="../templates/bin/_triliovault-datamover.sh.tpl"
 DATAMOVER_INIT="../templates/bin/_triliovault-datamover-init.sh.tpl"
 
+# Restore both templates from their committed *.tpl.in sources before injecting.
+# The injection below consumes the <INJECT_INIT_FILES> / <INJECT_CONFIG_FILES>
+# marker lines, so without this a second run of get_admin_creds*.sh would find
+# no markers and silently produce a datamover with no nova config at all.
+"$(dirname "${BASH_SOURCE[0]}")/restore_templates.sh" --force >/dev/null
+
 tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT
 

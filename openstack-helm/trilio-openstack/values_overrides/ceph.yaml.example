@@ -1,0 +1,12 @@
+## Generated at install time by utils/get_ceph.sh (OpenStack Helm, rbd_user
+## cinder) or utils/get_ceph_mosk.sh (MOSK, rbd_user nova), either directly or
+## via ../../install_trilio.sh. Copy to ceph.yaml only if you are filling it in
+## by hand.
+##
+## The user named here needs read+write on the vms and volumes pools that nova
+## and cinder use. Set enabled: false if the cloud has no Ceph backend, and drop
+## this file from the helm --values list.
+ceph:
+  enabled: true
+  rbd_user: cinder
+  keyring: <CEPH_CLIENT_KEYRING>

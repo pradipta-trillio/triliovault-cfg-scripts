@@ -1,0 +1,7 @@
+# Placeholder. Replaced at install time with the cloud's /etc/ceph/ceph.conf by
+# utils/get_ceph.sh (OpenStack Helm) or utils/get_ceph_mosk.sh (MOSK), either
+# directly or via ../../install_trilio.sh.
+#
+# Do not commit a rendered copy of this file: it carries the cluster's mon
+# addresses. Edit the .in stub only.
+[global]

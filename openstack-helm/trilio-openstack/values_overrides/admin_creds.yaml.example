@@ -1,3 +1,6 @@
+## Generated at install time by utils/get_admin_creds.sh (OpenStack Helm) or
+## utils/get_admin_creds_mosk.sh (MOSK), either directly or via
+## ../../install_trilio.sh. Values below are placeholders.
 conf:
   wlm: 
     keystone_authtoken:
@@ -8,8 +11,8 @@ endpoints:
     auth:
       admin:
         region_name: RegionOne
-        username: admin
-        password: password
+        username: <GENERATED>
+        password: <GENERATED>
         project_name: admin
         user_domain_name: default
         project_domain_name: default
@@ -23,8 +26,8 @@ endpoints:
   oslo_messaging_wlm:
     auth:
       admin:
-        username: rabbitmq
-        password: password
+        username: <GENERATED>
+        password: <GENERATED>
         secret:
           tls:
             internal: rabbitmq-tls-direct
@@ -34,8 +37,8 @@ endpoints:
   oslo_messaging_datamover:
     auth:
       admin:
-        username: rabbitmq
-        password: password
+        username: <GENERATED>
+        password: <GENERATED>
         secret:
           tls:
             internal: rabbitmq-tls-direct
@@ -45,8 +48,8 @@ endpoints:
   oslo_db_triliovault_datamover:
     auth:
       admin:
-        username: root
-        password: password
+        username: <GENERATED>
+        password: <GENERATED>
         secret:
           tls:
             internal: mariadb-tls-direct
@@ -56,8 +59,8 @@ endpoints:
   oslo_db_triliovault_wlm:
     auth:
       admin:
-        username: root
-        password: password
+        username: <GENERATED>
+        password: <GENERATED>
         secret:
           tls:
             internal: mariadb-tls-direct

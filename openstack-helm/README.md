@@ -1,8 +1,103 @@
-# Install 'triliovault' helm chart
+# Install Trilio for OpenStack (T4O) on OpenStack Helm / MOSK
 
+Run these steps on the node you install the OpenStack cloud helm charts from.
 
+---
 
-Note: Run following steps on node from where you have install openstack cloud helm charts.
+## Automated install (recommended)
+
+`install_trilio.sh` at the root of this directory drives documented steps 3
+through 10 in one interactive flow. It asks which cloud you are on (OpenStack
+Helm or MOSK), which version override file to use, and the image tag; then it
+picks the right per-cloud script variant, runs everything under
+`trilio-openstack/utils/` in the correct order, generates the `helm upgrade`
+command, shows it to you and runs it.
+
+```
+git clone -b <TRILIO_BRANCH> https://github.com/trilioData/triliovault-cfg-scripts.git
+cd triliovault-cfg-scripts/openstack-helm
+
+bash ./install_trilio.sh
+```
+
+Invoke it as `bash ./install_trilio.sh` — several of us run fish, and the
+script is bash.
+
+Still do **steps 1 and 2** by hand first (helm CLI, `nfs-common` on every node
+if you use an NFS backup target, `make` and `jq`). The Horizon plugin
+(step 14) is not automated; install it separately.
+
+### Useful flags
+
+| Flag | Effect |
+|---|---|
+| `--dry-run` | Detect, prompt, generate the run file and render it with `helm template`. Never touches the cluster. Start here. |
+| `--answers FILE` | Read answers from a `KEY=value` file. See `installer-answers.example.env`. |
+| `--yes` | Take every default without asking. For CI. |
+| `--resume` | Skip steps already recorded complete in `.install_state`. |
+| `--only STEP` / `--from STEP` | Run one step, or start partway. `--list-steps` prints the table. |
+| `--delete-jobs` | Delete leftover Trilio Jobs before installing. Needed on any re-install — a Job's pod template is immutable, so `helm upgrade` otherwise fails with `field is immutable`. |
+| `--rotate-passwords` | Regenerate `triliovault_passwords.yaml`. Read the warning it prints first. |
+
+### Things worth knowing
+
+- **It is safe to re-run.** Each step is independently idempotent; `--resume` is
+  a speed optimisation, not a correctness requirement.
+- **Passwords are never rotated silently.** `generate_passwords.sh` is run only
+  when `triliovault_passwords.yaml` is absent. Rotating under a live release
+  changes the Keystone, MariaDB and RabbitMQ passwords the running services
+  already hold.
+- **Four files under `trilio-openstack/templates/bin/` are generated, not
+  committed** — they carry your cluster's ceph mon addresses and
+  `nova-compute.conf`. They are rendered from the committed `*.tpl.in` stubs.
+  On a fresh clone, run `make -C trilio-openstack` (or any parent `make`
+  target, which reaches it via `init-%`) before a bare `helm lint` /
+  `helm template` — those two do **not** materialise anything themselves. The
+  installer does it in preflight, and `utils/install.sh`, `upgrade.sh`,
+  `upgrade6.2.sh` and `render_templates.sh` each do it for themselves. By hand:
+  `bash trilio-openstack/utils/restore_templates.sh --if-missing`.
+
+  `--force` restores all four, discarding rendered content. Only
+  `sync_nova_compute.sh` should use it.
+- **`admin_creds.yaml`, `ceph.yaml` and `triliovault_passwords.yaml` are
+  generated and gitignored.** The committed `.example` files next to them show
+  the shape.
+- **The version override file you pick *is* tracked in git.** The installer
+  rewrites its image tags in place and shows you the diff. Do not commit a
+  lab-specific tag.
+
+---
+
+## Manual install
+
+The steps below are the manual equivalent, kept as a reference and a fallback.
+The automated path above runs exactly these scripts.
+
+> **Known drift in the sections that follow.** They have not been fully
+> refreshed and still refer to the old layout. Corrections:
+> - the chart directory is `trilio-openstack/`, not `triliovault/`
+> - the namespace and helm release are both `trilio-openstack`, not `triliovault`
+> - `values_overrides/conf_triliovault.yaml` no longer exists; backup targets
+>   are created at runtime with `workloadmgr backup-target-create`
+> - `create_image_pull_secret.sh` takes two positional arguments now
+>   (`<username> <password>`), it no longer has placeholders to edit
+> - `get_ceph.sh` uses the `cinder` user; `get_ceph_mosk.sh` uses `nova`
+> - **`create_rabbitmq.sh` is missing from these steps and is mandatory.** It
+>   must run *before* `get_admin_creds*.sh`, which reads the
+>   `rabbitmq-default-user` secret it creates.
+> - **`generate_passwords.sh` is missing too**, and `install.sh` passes its
+>   output unconditionally.
+> - on MOSK use `get_admin_creds_mosk.sh`, `get_ceph_mosk.sh` and
+>   `ingress_mosk.yaml`
+> - if nova/cinder do **not** use Ceph, pass `no_ceph.yaml` — omitting
+>   `ceph.yaml` is not enough, because `values.yaml` defaults
+>   `ceph.enabled: true`
+> - label your compute nodes `openstack-compute-node=enabled`; the datamover
+>   and DMS DaemonSets select on it and schedule zero pods without it
+> - `uninstall.sh` must be run from `utils/` (it uses a relative `patch.yaml`),
+>   and its `kubectl delete rs/pod` calls omit `-n`, so they rely on the
+>   current-context namespace `install.sh` sets
+
 
 ## 1. Pre-requisites
 

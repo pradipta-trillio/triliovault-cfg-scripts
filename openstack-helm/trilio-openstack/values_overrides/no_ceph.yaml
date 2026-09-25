@@ -1,0 +1,9 @@
+---
+## For clouds where nova/cinder do NOT use Ceph.
+##
+## values.yaml defaults ceph.enabled to true with an empty keyring, so simply
+## omitting ceph.yaml from the helm --values list is not enough — the chart
+## still renders the Ceph keyring secret and the ceph.conf configmap entry with
+## no credentials in them. Pass this file instead of ceph.yaml.
+ceph:
+  enabled: false

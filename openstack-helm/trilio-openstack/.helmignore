@@ -21,3 +21,5 @@
 *.tmproj
 .vscode/
 utils/
+# Pristine sources for the generated bin/*.tpl files
+*.in

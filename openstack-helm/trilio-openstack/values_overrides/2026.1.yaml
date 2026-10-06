@@ -1,0 +1,49 @@
+---
+# OpenStack-Helm 2026.1 (Gazpacho). Use it in utils/install.sh in place of 2023.2.yaml, together with
+# app_gateway.yaml in place of ingress.yaml. This file must be listed AFTER app_gateway.yaml: helm
+# merges --values files in order, and app_gateway.yaml points the HTTPRoutes at MOSK's
+# openstack/app-gateway, which this file overrides with the upstream OpenStack-Helm Gateway.
+# Upstream helm-toolkit 2026.1 removed the ingress helpers and OpenStack-Helm 2026.1 exposes its
+# public endpoints through Gateway API (Envoy Gateway), so Ingress is not used here.
+# The *-2026.1 T4O images are retags of the 6.2.1 *-2023.2 images (same digests, no rebuild): the
+# containers carry their own userspace, so the Ubuntu 24.04 hosts don't affect them, and the
+# datamover registers its own service record, not a nova-compute one. Only the Horizon plugin is
+# rebuilt (Dockerfile_2026.1), and it is set in the horizon release values, not here.
+images:
+  pull_policy: "IfNotPresent"
+  tags:
+    bootstrap: docker.io/openstackhelm/heat:2023.2-ubuntu_jammy
+    db_init: docker.io/openstackhelm/heat:2023.2-ubuntu_jammy
+    db_drop: docker.io/openstackhelm/heat:2023.2-ubuntu_jammy
+    rabbit_init: docker.io/rabbitmq:3.7-management
+    ks_user: docker.io/openstackhelm/heat:2023.2-ubuntu_jammy
+    ks_service: docker.io/openstackhelm/heat:2023.2-ubuntu_jammy
+    ks_endpoints: docker.io/openstackhelm/heat:2023.2-ubuntu_jammy
+    dep_check: quay.io/airshipit/kubernetes-entrypoint:v1.0.0
+    image_repo_sync: docker.io/docker:17.07.0
+    triliovault_wlm_cloud_trust: docker.io/trilio/trilio-wlm-helm:6.2.1-test-2026.1
+    triliovault_wlm_api: docker.io/trilio/trilio-wlm-helm:6.2.1-test-2026.1
+    triliovault_wlm_cron: docker.io/trilio/trilio-wlm-helm:6.2.1-test-2026.1
+    triliovault_wlm_scheduler: docker.io/trilio/trilio-wlm-helm:6.2.1-test-2026.1
+    triliovault_wlm_workloads: docker.io/trilio/trilio-wlm-helm:6.2.1-test-2026.1
+    triliovault_wlm_db_sync: docker.io/trilio/trilio-wlm-helm:6.2.1-test-2026.1
+    triliovault_datamover: docker.io/trilio/trilio-datamover-helm:6.2.1-test-2026.1
+    triliovault_datamover_api: docker.io/trilio/trilio-datamover-api-helm:6.2.1-test-2026.1
+    triliovault_datamover_db_sync: docker.io/trilio/trilio-datamover-api-helm:6.2.1-test-2026.1
+    triliovault_dms: docker.io/trilio/trilio-dms-helm:6.2.1-test-2026.1
+    triliovault_dms_init: docker.io/trilio/trilio-dms-helm:6.2.1-test-2026.1
+# Upstream OpenStack-Helm Gateway (roles/deploy-env). Change name/namespace if your Gateway differs:
+# kubectl get gateway -A
+network:
+  wlm_api:
+    http_route:
+      gateway:
+        name: gateway-default
+        namespace: envoy-gateway-system
+        sectionName: null
+  datamover_api:
+    http_route:
+      gateway:
+        name: gateway-default
+        namespace: envoy-gateway-system
+        sectionName: null

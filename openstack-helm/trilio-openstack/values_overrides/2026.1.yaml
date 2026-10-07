@@ -19,7 +19,9 @@ images:
     ks_user: docker.io/openstackhelm/heat:2023.2-ubuntu_jammy
     ks_service: docker.io/openstackhelm/heat:2023.2-ubuntu_jammy
     ks_endpoints: docker.io/openstackhelm/heat:2023.2-ubuntu_jammy
-    dep_check: quay.io/airshipit/kubernetes-entrypoint:v1.0.0
+    # v1.0.0 (2019) has a Docker schema 1 manifest, which containerd >= 2.1 refuses to pull
+    # ("schema 1 image manifests are no longer supported"). Same tag as upstream OpenStack-Helm 2026.1.
+    dep_check: quay.io/airshipit/kubernetes-entrypoint:latest-ubuntu_noble
     image_repo_sync: docker.io/docker:17.07.0
     triliovault_wlm_cloud_trust: docker.io/trilio/trilio-wlm-helm:6.2.1-test-2026.1
     triliovault_wlm_api: docker.io/trilio/trilio-wlm-helm:6.2.1-test-2026.1

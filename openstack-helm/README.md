@@ -71,17 +71,18 @@ for 2026.1.
    kubectl -n trilio-openstack get httproute      # describe: parentRef = your Gateway, Accepted=True, ResolvedRefs=True
    kubectl get gateway -A                         # ADDRESS
    ```
-8. Install the Horizon plugin: re-run the command you used to deploy the `horizon` chart, with
-   the Horizon images set to the plugin image:
+8. Install the Horizon plugin. `HORIZON_CHART` is the `horizon` chart the release was installed
+   from, at the same version (`helm -n openstack list` shows it):
    ```
-   IMG=docker.io/trilio/trilio-horizon-plugin-helm:<TAG>-2026.1
-   helm upgrade --install horizon openstack-helm/horizon --namespace=openstack <your existing overrides> \
-     --set images.tags.horizon=${IMG} --set images.tags.horizon_db_sync=${IMG}
-   kubectl -n openstack rollout status deploy/horizon
+   HORIZON_CHART=<path to the horizon chart> \
+     ./install_horizon_plugin.sh docker.io/trilio/trilio-horizon-plugin-helm:<TAG>-2026.1
    ```
-   The image is private: the Horizon pods must be able to pull it (pre-pull it on the control
-   nodes or give the pods a pull secret). Use a new `<TAG>` for every rebuild, because cached
-   images under an old tag are reused. TODO(TVAULT-7746): record the method used on the lab.
+   The script pre-pulls the private image on the Horizon nodes with a short-lived DaemonSet that
+   uses the `triliovault-image-registry` secret (the Horizon pods have no pull secret), then runs
+   `helm upgrade horizon --reuse-values --set images.tags.horizon=<image>`, waits for the rollout
+   and checks that the Trilio panels are enabled. To go back to the stock Horizon image:
+   `HORIZON_CHART=<path> ./install_horizon_plugin.sh --rollback`. Use a new `<TAG>` for every
+   rebuild, because Horizon pulls with `IfNotPresent`.
 9. Verify: all pods in `trilio-openstack` are Running/Completed, and
    `curl -k https://triliovault-wlm.<public_domain_name>` answers. Then run the functional test
    suite (`bash test/run_all.sh` from the repository root).

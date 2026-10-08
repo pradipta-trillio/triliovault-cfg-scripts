@@ -37,6 +37,23 @@ images:
     triliovault_datamover_db_sync: docker.io/trilio/trilio-datamover-api-helm:6.2.1-test-mosk26.2
     triliovault_dms: docker.io/trilio/trilio-dms-helm:6.2.1-test-mosk26.2
     triliovault_dms_init: docker.io/trilio/trilio-dms-helm:6.2.1-test-mosk26.2
+# Upstream OpenStack-Helm 2026.1 runs nova on RabbitMQ 4 with quorum queues, and the datamover loads
+# nova's config, so it declares its queues and exchanges durable/quorum on every broker it uses,
+# including T4O's own RabbitMQ (vhost dmapi). DMAPI must declare them the same way, otherwise the
+# datamover's channel fails with "inequivalent arg 'durable' for exchange 'dmapi'". Set both sides
+# explicitly. On an existing install, delete the dmapi vhost (or the 'dmapi' exchange) before upgrading:
+# RabbitMQ never changes the durability of an existing exchange.
+conf:
+  datamover_api:
+    oslo_messaging_rabbit:
+      amqp_durable_queues: true
+      rabbit_quorum_queue: true
+      rabbit_transient_quorum_queue: true
+  datamover:
+    oslo_messaging_rabbit:
+      amqp_durable_queues: true
+      rabbit_quorum_queue: true
+      rabbit_transient_quorum_queue: true
 # Upstream OpenStack-Helm Gateway (roles/deploy-env). Change name/namespace if your Gateway differs:
 # kubectl get gateway -A
 network:

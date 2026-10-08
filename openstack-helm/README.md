@@ -77,10 +77,12 @@ for 2026.1.
    HORIZON_CHART=<path to the horizon chart> \
      ./install_horizon_plugin.sh docker.io/trilio/trilio-horizon-plugin-helm:<TAG>-2026.1
    ```
-   The script pre-pulls the private image on the Horizon nodes with a short-lived DaemonSet that
-   uses the `triliovault-image-registry` secret (the Horizon pods have no pull secret), then runs
-   `helm upgrade horizon --reuse-values --set images.tags.horizon=<image>`, waits for the rollout
-   and checks that the Trilio panels are enabled. To go back to the stock Horizon image:
+   The plugin image is private and the Horizon pods have no pull secret, so the script copies
+   `trilio-openstack/triliovault-image-registry` to `openstack/trilio-horizon-image-registry` and
+   adds it to the `horizon` ServiceAccount's `imagePullSecrets` (pre-pulling the image onto the
+   nodes doesn't work on Kubernetes 1.35+, where the kubelet re-checks the pod's own credentials).
+   It then runs `helm upgrade horizon --reuse-values --set images.tags.horizon=<image>`, waits for
+   the rollout and checks that the Trilio panels are enabled. To go back to the stock Horizon image:
    `HORIZON_CHART=<path> ./install_horizon_plugin.sh --rollback`. Use a new `<TAG>` for every
    rebuild, because Horizon pulls with `IfNotPresent`.
 9. Verify: all pods in `trilio-openstack` are Running/Completed, and

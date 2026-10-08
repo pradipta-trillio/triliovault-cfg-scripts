@@ -3,10 +3,14 @@
 # Install (or roll back) the Trilio Horizon plugin on OpenStack-Helm by overriding the Horizon
 # image in the horizon Helm release. For MOSK use install_horizon_plugin_mosk.sh instead.
 #
-# Why a pre-pull: the plugin image is private, and the OpenStack-Helm Horizon deployment has no
-# pull secret and pulls with IfNotPresent. A pod can only use pull secrets from its own namespace,
-# so the image is pulled onto every Horizon node by a short-lived DaemonSet in the namespace that
-# holds the triliovault-image-registry secret (created by create_image_pull_secret.sh).
+# The plugin image is private and the OpenStack-Helm Horizon pods have no pull secret. The script
+# copies the T4O registry secret (created by create_image_pull_secret.sh) into the OpenStack
+# namespace and adds it to the imagePullSecrets of the horizon ServiceAccount, so every new
+# Horizon pod gets it. The chart's ServiceAccount does not set imagePullSecrets, so later helm
+# upgrades keep the entry. (The chart's own registry option would put the registry password into
+# the horizon release values.) Pre-pulling the image is not enough: from Kubernetes 1.35 the
+# kubelet only lets a pod use a cached private image if the pod has the credentials it was
+# pulled with.
 #
 # Usage:
 #   HORIZON_CHART=<path to the horizon chart> ./install_horizon_plugin.sh <horizon_plugin_image>
@@ -19,15 +23,15 @@
 # chart, and the script refuses to change the chart version). The release keeps all its other
 # values (--reuse-values); only images.tags.horizon changes.
 #
-# Use a new image tag for every rebuild: with IfNotPresent, a rebuilt image under an old tag
-# never reaches nodes that already cached it.
+# Use a new image tag for every rebuild: Horizon pulls with IfNotPresent, so a rebuilt image
+# under an old tag never reaches nodes that already cached it.
 #
 # Optional environment variables:
 #   RELEASE                 horizon Helm release name (default: horizon)
 #   NAMESPACE               OpenStack namespace (default: openstack)
-#   PULL_SECRET             image pull secret (default: triliovault-image-registry)
-#   PULL_SECRET_NAMESPACE   namespace of PULL_SECRET and of the pre-pull DaemonSet (default: trilio-openstack)
-#   TIMEOUT                 seconds to wait for each phase (default: 1800)
+#   PULL_SECRET             T4O image pull secret (default: triliovault-image-registry)
+#   PULL_SECRET_NAMESPACE   namespace of PULL_SECRET (default: trilio-openstack)
+#   TIMEOUT                 seconds to wait for the Horizon rollout (default: 1800)
 
 set -euo pipefail
 
@@ -36,7 +40,8 @@ NAMESPACE="${NAMESPACE:-openstack}"
 PULL_SECRET="${PULL_SECRET:-triliovault-image-registry}"
 PULL_SECRET_NAMESPACE="${PULL_SECRET_NAMESPACE:-trilio-openstack}"
 TIMEOUT="${TIMEOUT:-1800}"
-PREPULL_DS="trilio-horizon-prepull"
+HORIZON_SA="horizon"
+HORIZON_PULL_SECRET="trilio-horizon-image-registry"
 PLUGIN_IMAGE_MATCH="trilio-horizon-plugin"
 
 usage() {
@@ -52,7 +57,8 @@ horizon_image() {
 }
 
 release_status() {
-    helm -n "$NAMESPACE" status "$RELEASE" -o json 2>/dev/null | grep -o '"status":"[a-z-]*"' | head -1 | cut -d'"' -f4
+    { helm -n "$NAMESPACE" status "$RELEASE" -o json 2>/dev/null || true; } \
+        | grep -o '"status":"[a-z-]*"' | head -1 | cut -d'"' -f4
 }
 
 # Chart version of the installed release, from "helm list" (CHART column: <name>-<version>).
@@ -65,10 +71,21 @@ chart_path_version() {
     { helm show chart "$HORIZON_CHART" 2>/dev/null || true; } | awk '/^version:/ {print $2}'
 }
 
+# Names in the horizon ServiceAccount's imagePullSecrets, one per line.
+sa_pull_secrets() {
+    kubectl -n "$NAMESPACE" get sa "$HORIZON_SA" -o jsonpath='{range .imagePullSecrets[*]}{.name}{"\n"}{end}'
+}
+
+sa_has_our_secret() { sa_pull_secrets | grep -qx "$HORIZON_PULL_SECRET"; }
+
 # Horizon container image deployed by a given release revision.
 revision_image() {
     helm -n "$NAMESPACE" get manifest "$RELEASE" --revision "$1" 2>/dev/null \
         | awk '/^kind: Deployment/ {d=1} d && /image: / && /horizon/ {gsub(/"/,"",$2); print $2; exit}'
+}
+
+rollout_complete() {
+    kubectl -n "$NAMESPACE" rollout status deploy/horizon --timeout=1s >/dev/null 2>&1
 }
 
 wait_for_horizon_rollout() {
@@ -80,6 +97,9 @@ wait_for_horizon_rollout() {
         local bad
         bad=$(kubectl -n "$NAMESPACE" get pods --no-headers | awk '/^horizon-/ && !/-db-/ && $2 != "1/1" {print $1; exit}')
         if [[ -n "$bad" ]]; then
+            echo "--- events of $bad:"
+            kubectl -n "$NAMESPACE" get events --field-selector "involvedObject.name=$bad" \
+                -o jsonpath='{range .items[*]}{.reason}: {.message}{"\n"}{end}' 2>/dev/null | sort -u | tail -5 || true
             echo "--- last log lines of $bad:"
             kubectl -n "$NAMESPACE" logs "$bad" -c horizon --tail=25 2>/dev/null \
                 || kubectl -n "$NAMESPACE" logs "$bad" -c horizon --previous --tail=25 2>/dev/null || true
@@ -89,17 +109,6 @@ wait_for_horizon_rollout() {
         echo "To go back to the stock Horizon image: HORIZON_CHART=$HORIZON_CHART $0 --rollback"
         exit 1
     fi
-}
-
-set_horizon_image() {
-    log "helm upgrade $RELEASE (--reuse-values) with images.tags.horizon=$1 ..."
-    helm -n "$NAMESPACE" upgrade "$RELEASE" "$HORIZON_CHART" --reuse-values \
-        --set "images.tags.horizon=$1" >/dev/null
-    [[ "$(horizon_image)" == "$1" ]] || die "helm upgrade finished but deploy/horizon uses $(horizon_image)."
-}
-
-cleanup_prepull() {
-    kubectl -n "$PULL_SECRET_NAMESPACE" delete ds "$PREPULL_DS" --ignore-not-found --wait=false >/dev/null 2>&1 || true
 }
 
 # ---------------------------------------------------------------- arguments / preflight
@@ -122,6 +131,8 @@ CHART_VERSION="$(chart_path_version)"
 [[ -n "$CHART_VERSION" ]] || die "HORIZON_CHART='$HORIZON_CHART' is not a readable Helm chart."
 [[ "$CHART_VERSION" == "$INSTALLED_VERSION" ]] \
     || die "HORIZON_CHART is version $CHART_VERSION but release '$RELEASE' runs $INSTALLED_VERSION; use the matching chart."
+kubectl -n "$NAMESPACE" get sa "$HORIZON_SA" >/dev/null 2>&1 \
+    || die "ServiceAccount '$HORIZON_SA' not found in '$NAMESPACE'."
 log "Release: $NAMESPACE/$RELEASE (chart $INSTALLED_VERSION), current Horizon image: $(horizon_image)"
 
 # Never upgrade while another Helm operation on the release is in progress.
@@ -130,20 +141,30 @@ log "Release: $NAMESPACE/$RELEASE (chart $INSTALLED_VERSION), current Horizon im
 
 # ---------------------------------------------------------------- rollback
 if [[ "$ACTION" == "rollback" ]]; then
-    if [[ "$(horizon_image)" != *"$PLUGIN_IMAGE_MATCH"* ]]; then
+    if [[ "$(horizon_image)" != *"$PLUGIN_IMAGE_MATCH"* ]] && ! sa_has_our_secret; then
         log "Horizon does not run the Trilio plugin image; nothing to roll back."
         exit 0
     fi
-    # Newest earlier revision whose Horizon image is not a Trilio plugin image.
-    STOCK=""
-    for rev in $(helm -n "$NAMESPACE" history "$RELEASE" --max 256 -o json \
-                    | grep -o '"revision":[0-9]*' | cut -d: -f2 | sort -rn); do
-        img="$(revision_image "$rev")"
-        if [[ -n "$img" && "$img" != *"$PLUGIN_IMAGE_MATCH"* ]]; then STOCK="$img"; break; fi
-    done
-    [[ -n "$STOCK" ]] || die "no earlier revision of '$RELEASE' with a stock Horizon image; set it by hand with helm upgrade."
-    set_horizon_image "$STOCK"
-    wait_for_horizon_rollout
+    if [[ "$(horizon_image)" == *"$PLUGIN_IMAGE_MATCH"* ]]; then
+        # Newest earlier revision whose Horizon image is not a Trilio plugin image.
+        STOCK=""
+        for rev in $(helm -n "$NAMESPACE" history "$RELEASE" --max 256 -o json \
+                        | grep -o '"revision":[0-9]*' | cut -d: -f2 | sort -rn); do
+            img="$(revision_image "$rev")"
+            if [[ -n "$img" && "$img" != *"$PLUGIN_IMAGE_MATCH"* ]]; then STOCK="$img"; break; fi
+        done
+        [[ -n "$STOCK" ]] || die "no earlier revision of '$RELEASE' with a stock Horizon image; set it by hand with helm upgrade."
+        log "helm upgrade $RELEASE (--reuse-values) with images.tags.horizon=$STOCK ..."
+        helm -n "$NAMESPACE" upgrade "$RELEASE" "$HORIZON_CHART" --reuse-values \
+            --set "images.tags.horizon=$STOCK" >/dev/null
+        wait_for_horizon_rollout
+    fi
+    if sa_has_our_secret; then
+        idx=$(sa_pull_secrets | grep -nx "$HORIZON_PULL_SECRET" | head -1 | cut -d: -f1)
+        kubectl -n "$NAMESPACE" patch sa "$HORIZON_SA" --type json \
+            -p "[{\"op\":\"remove\",\"path\":\"/imagePullSecrets/$((idx - 1))\"}]" >/dev/null
+    fi
+    kubectl -n "$NAMESPACE" delete secret "$HORIZON_PULL_SECRET" --ignore-not-found >/dev/null
     log "Rolled back. Horizon image: $(horizon_image)"
     exit 0
 fi
@@ -152,51 +173,43 @@ fi
 kubectl -n "$PULL_SECRET_NAMESPACE" get secret "$PULL_SECRET" >/dev/null 2>&1 \
     || die "pull secret '$PULL_SECRET' not found in '$PULL_SECRET_NAMESPACE'; run ./create_image_pull_secret.sh first."
 
-if [[ "$(horizon_image)" == "$IMG" ]]; then
-    log "Horizon already uses $IMG; nothing to do."
+if [[ "$(horizon_image)" == "$IMG" ]] && rollout_complete && sa_has_our_secret; then
+    log "Horizon already runs $IMG; nothing to do."
     exit 0
 fi
 
-# 1. Pre-pull the image on every node Horizon can run on (same nodeSelector as deploy/horizon).
-NODE_SELECTOR="$(kubectl -n "$NAMESPACE" get deploy horizon -o jsonpath='{.spec.template.spec.nodeSelector}')"
-[[ -n "$NODE_SELECTOR" ]] || NODE_SELECTOR="{}"
-trap cleanup_prepull EXIT
-cleanup_prepull
-log "Pre-pulling $IMG on the Horizon nodes (nodeSelector $NODE_SELECTOR)..."
-cat <<EOF | kubectl apply -f -
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: $PREPULL_DS
-  namespace: $PULL_SECRET_NAMESPACE
-spec:
-  selector:
-    matchLabels: {app: $PREPULL_DS}
-  template:
-    metadata:
-      labels: {app: $PREPULL_DS}
-    spec:
-      nodeSelector: $NODE_SELECTOR
-      imagePullSecrets: [{name: $PULL_SECRET}]
-      terminationGracePeriodSeconds: 0
-      containers:
-      - name: prepull
-        image: "$IMG"
-        command: ["sleep", "3600"]
-        resources: {requests: {cpu: 10m, memory: 16Mi}}
-EOF
-if ! kubectl -n "$PULL_SECRET_NAMESPACE" rollout status ds/"$PREPULL_DS" --timeout="${TIMEOUT}s"; then
-    echo "Image pre-pull failed. Pod status:"
-    kubectl -n "$PULL_SECRET_NAMESPACE" get pods -l app="$PREPULL_DS" -o wide || true
-    kubectl -n "$PULL_SECRET_NAMESPACE" get events --field-selector reason=Failed 2>/dev/null | grep "$PREPULL_DS" | tail -5 || true
-    die "could not pull $IMG (check the tag and the '$PULL_SECRET' credentials)."
+# 1. Copy the registry credentials into the OpenStack namespace (pods can only use pull secrets
+#    from their own namespace) and attach them to the horizon ServiceAccount.
+log "Copying $PULL_SECRET_NAMESPACE/$PULL_SECRET to $NAMESPACE/$HORIZON_PULL_SECRET..."
+kubectl -n "$PULL_SECRET_NAMESPACE" get secret "$PULL_SECRET" -o jsonpath='{.data.\.dockerconfigjson}' \
+    | base64 -d \
+    | kubectl -n "$NAMESPACE" create secret generic "$HORIZON_PULL_SECRET" \
+        --type=kubernetes.io/dockerconfigjson --from-file=.dockerconfigjson=/dev/stdin \
+        --dry-run=client -o yaml \
+    | kubectl apply -f - >/dev/null
+if ! sa_has_our_secret; then
+    log "Adding $HORIZON_PULL_SECRET to the imagePullSecrets of ServiceAccount $HORIZON_SA..."
+    if [[ -z "$(sa_pull_secrets)" ]]; then
+        kubectl -n "$NAMESPACE" patch sa "$HORIZON_SA" --type json \
+            -p "[{\"op\":\"add\",\"path\":\"/imagePullSecrets\",\"value\":[{\"name\":\"$HORIZON_PULL_SECRET\"}]}]" >/dev/null
+    else
+        kubectl -n "$NAMESPACE" patch sa "$HORIZON_SA" --type json \
+            -p "[{\"op\":\"add\",\"path\":\"/imagePullSecrets/-\",\"value\":{\"name\":\"$HORIZON_PULL_SECRET\"}}]" >/dev/null
+    fi
 fi
-cleanup_prepull
-trap - EXIT
-log "Image cached on all Horizon nodes."
 
-# 2. Point Horizon at the plugin image, then wait for the pods to roll.
-set_horizon_image "$IMG"
+# 2. Point Horizon at the plugin image. Pods only pick up ServiceAccount pull secrets when they
+#    are created, so if the image is already set (e.g. an earlier attempt without the secret),
+#    restart the rollout instead.
+if [[ "$(horizon_image)" == "$IMG" ]]; then
+    log "deploy/horizon already uses $IMG; restarting it so the new pods get the pull secret..."
+    kubectl -n "$NAMESPACE" rollout restart deploy/horizon >/dev/null
+else
+    log "helm upgrade $RELEASE (--reuse-values) with images.tags.horizon=$IMG ..."
+    helm -n "$NAMESPACE" upgrade "$RELEASE" "$HORIZON_CHART" --reuse-values \
+        --set "images.tags.horizon=$IMG" >/dev/null
+    [[ "$(horizon_image)" == "$IMG" ]] || die "helm upgrade finished but deploy/horizon uses $(horizon_image)."
+fi
 wait_for_horizon_rollout
 
 # 3. Verify the plugin is loaded in a running pod.

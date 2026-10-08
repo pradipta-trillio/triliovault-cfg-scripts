@@ -5,10 +5,12 @@
 # openstack/app-gateway, which this file overrides with the upstream OpenStack-Helm Gateway.
 # Upstream helm-toolkit 2026.1 removed the ingress helpers and OpenStack-Helm 2026.1 exposes its
 # public endpoints through Gateway API (Envoy Gateway), so Ingress is not used here.
-# The *-2026.1 T4O images are retags of the 6.2.1 *-2023.2 images (same digests, no rebuild): the
-# containers carry their own userspace, so the Ubuntu 24.04 hosts don't affect them, and the
-# datamover registers its own service record, not a nova-compute one. Only the Horizon plugin is
-# rebuilt (Dockerfile_2026.1), and it is set in the horizon release values, not here.
+# The T4O images are the MOSK 26.2 ones (*-test-mosk26.2 = the 6.2.1 *-mosk25.1 Caracal build, same
+# digests), validated on Gazpacho in TVAULT-7745. They are built on upstream openstackhelm/nova and
+# ubuntu:jammy, not on Mirantis images. Not the 2023.2 (Bobcat) images: their oslo.messaging 14.4.2
+# can't declare transient quorum queues, and upstream 2026.1 runs RabbitMQ 4 with nova on quorum
+# queues (transient non-exclusive queues are denied by default); Caracal's 14.7.2 can. Only the
+# Horizon plugin is rebuilt (Dockerfile_2026.1), and it is set in the horizon release values, not here.
 images:
   pull_policy: "IfNotPresent"
   tags:
@@ -19,21 +21,22 @@ images:
     ks_user: docker.io/openstackhelm/heat:2023.2-ubuntu_jammy
     ks_service: docker.io/openstackhelm/heat:2023.2-ubuntu_jammy
     ks_endpoints: docker.io/openstackhelm/heat:2023.2-ubuntu_jammy
-    # v1.0.0 (2019) has a Docker schema 1 manifest, which containerd >= 2.1 refuses to pull
-    # ("schema 1 image manifests are no longer supported"). Same tag as upstream OpenStack-Helm 2026.1.
+    # v1.0.0 (2019) has a Docker schema 1 manifest. containerd 2.0 stops pulling schema 1 by default
+    # and 2.1 removes it ("schema 1 image manifests are no longer supported"); MOSK runs containerd 1.7.
+    # Same tag as upstream OpenStack-Helm 2026.1.
     dep_check: quay.io/airshipit/kubernetes-entrypoint:latest-ubuntu_noble
     image_repo_sync: docker.io/docker:17.07.0
-    triliovault_wlm_cloud_trust: docker.io/trilio/trilio-wlm-helm:6.2.1-test-2026.1
-    triliovault_wlm_api: docker.io/trilio/trilio-wlm-helm:6.2.1-test-2026.1
-    triliovault_wlm_cron: docker.io/trilio/trilio-wlm-helm:6.2.1-test-2026.1
-    triliovault_wlm_scheduler: docker.io/trilio/trilio-wlm-helm:6.2.1-test-2026.1
-    triliovault_wlm_workloads: docker.io/trilio/trilio-wlm-helm:6.2.1-test-2026.1
-    triliovault_wlm_db_sync: docker.io/trilio/trilio-wlm-helm:6.2.1-test-2026.1
-    triliovault_datamover: docker.io/trilio/trilio-datamover-helm:6.2.1-test-2026.1
-    triliovault_datamover_api: docker.io/trilio/trilio-datamover-api-helm:6.2.1-test-2026.1
-    triliovault_datamover_db_sync: docker.io/trilio/trilio-datamover-api-helm:6.2.1-test-2026.1
-    triliovault_dms: docker.io/trilio/trilio-dms-helm:6.2.1-test-2026.1
-    triliovault_dms_init: docker.io/trilio/trilio-dms-helm:6.2.1-test-2026.1
+    triliovault_wlm_cloud_trust: docker.io/trilio/trilio-wlm-helm:6.2.1-test-mosk26.2
+    triliovault_wlm_api: docker.io/trilio/trilio-wlm-helm:6.2.1-test-mosk26.2
+    triliovault_wlm_cron: docker.io/trilio/trilio-wlm-helm:6.2.1-test-mosk26.2
+    triliovault_wlm_scheduler: docker.io/trilio/trilio-wlm-helm:6.2.1-test-mosk26.2
+    triliovault_wlm_workloads: docker.io/trilio/trilio-wlm-helm:6.2.1-test-mosk26.2
+    triliovault_wlm_db_sync: docker.io/trilio/trilio-wlm-helm:6.2.1-test-mosk26.2
+    triliovault_datamover: docker.io/trilio/trilio-datamover-helm:6.2.1-test-mosk26.2
+    triliovault_datamover_api: docker.io/trilio/trilio-datamover-api-helm:6.2.1-test-mosk26.2
+    triliovault_datamover_db_sync: docker.io/trilio/trilio-datamover-api-helm:6.2.1-test-mosk26.2
+    triliovault_dms: docker.io/trilio/trilio-dms-helm:6.2.1-test-mosk26.2
+    triliovault_dms_init: docker.io/trilio/trilio-dms-helm:6.2.1-test-mosk26.2
 # Upstream OpenStack-Helm Gateway (roles/deploy-env). Change name/namespace if your Gateway differs:
 # kubectl get gateway -A
 network:

@@ -32,7 +32,9 @@ images:
     triliovault_wlm_scheduler: docker.io/trilio/trilio-wlm-helm:6.2.1-test-mosk26.2
     triliovault_wlm_workloads: docker.io/trilio/trilio-wlm-helm:6.2.1-test-mosk26.2
     triliovault_wlm_db_sync: docker.io/trilio/trilio-wlm-helm:6.2.1-test-mosk26.2
-    triliovault_datamover: docker.io/trilio/trilio-datamover-helm:6.2.1-test-mosk26.2
+    # Built from docker/openstack-helm/trilio-datamover/Dockerfile_2026.1: the MOSK image plus a Ceph
+    # Tentacle client, which reads the aes256k CephX keys of fresh Tentacle clusters (Reef can't).
+    triliovault_datamover: docker.io/trilio/trilio-datamover-helm:6.2.1-test2-2026.1
     triliovault_datamover_api: docker.io/trilio/trilio-datamover-api-helm:6.2.1-test-mosk26.2
     triliovault_datamover_db_sync: docker.io/trilio/trilio-datamover-api-helm:6.2.1-test-mosk26.2
     triliovault_dms: docker.io/trilio/trilio-dms-helm:6.2.1-test-mosk26.2

@@ -46,6 +46,10 @@ images:
 # explicitly. On an existing install, delete the dmapi vhost (or the 'dmapi' exchange) before upgrading:
 # RabbitMQ never changes the durability of an existing exchange.
 conf:
+  # OpenStack-Helm nova-compute registers compute hosts as $(hostname --fqdn). DMAPI sends DMS mount
+  # requests to that name, so the compute DMS must use it too; with the short name the requests go
+  # to a queue nobody consumes and snapshots hang in wait_to_be_uploading (DMS mount timeout).
+  dms_compute_node_id: fqdn
   datamover_api:
     oslo_messaging_rabbit:
       amqp_durable_queues: true

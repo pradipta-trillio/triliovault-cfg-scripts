@@ -56,7 +56,10 @@ class trilio::wlmapi (
   $interface                       = 'internal',
   $trustee_role                    = 'creator',
   $vault_data_dir                  = "/var/lib/nova/triliovault-mounts",
-  $backup_targets                  = [],
+  $fail_on_qga_freeze_failure      = false,
+  # Same lookup as trilio::dms::node_id, so WLM's mount requests reach the DMS
+  # server on this controller.
+  $dms_node_id                     = hiera('nova::host', hiera('fqdn_canonical')),
   $auth_host_internal              = undef,
   $auth_port_internal              = undef,
   $auth_protocol_internal          = undef,

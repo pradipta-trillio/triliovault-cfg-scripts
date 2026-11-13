@@ -22,9 +22,11 @@ class trilio::wlmapi::config inherits trilio::wlmapi {
         'ssl'       => $oslomsg_notify_use_ssl_real,
       })
 
-      $enabled_backends = join($backup_targets.map |$target| { $target['backup_target_name'] }, ',')
+      $dms_rabbitmq_url = dms_rabbitmq_url($oslomsg_rpc_hosts, $oslomsg_rpc_username, $oslomsg_rpc_password,
+                                           $oslomsg_rpc_port, $oslomsg_rpc_use_ssl)
+      $dms_client_db_url = $database_connection
 
-      
+
         $memcached_hosts_real = any2array(pick($memcached_ips, $memcached_hosts))
         if $step >= 3 {
             if $memcached_ipv6 or $memcached_hosts_real[0] =~ Stdlib::Compat::Ipv6 {
@@ -149,6 +151,21 @@ class trilio::wlmapi::config inherits trilio::wlmapi {
           owner  => '42436',
           group  => '42436',
           mode   => '0644',
+      }
+
+      # DMS client config, read in-process by all four WLM services.
+      file { '/etc/triliovault-dms/':
+          ensure => 'directory',
+          owner  => '42436',
+          group  => '42436',
+          mode   => '0755',
+      }->
+      file { '/etc/triliovault-dms/client.conf':
+          ensure  => present,
+          content => template('trilio/triliovault_dms_client_conf.erb'),
+          owner   => '42436',
+          group   => '42436',
+          mode    => '0640',
       }
 
 

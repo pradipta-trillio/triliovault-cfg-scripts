@@ -23,6 +23,10 @@ class trilio::dmapi::config inherits trilio::dmapi {
         'ssl'       => $oslomsg_notify_use_ssl_real,
       })
 
+      $dms_rabbitmq_url = dms_rabbitmq_url($oslomsg_rpc_hosts, $oslomsg_rpc_username, $oslomsg_rpc_password,
+                                           $oslomsg_rpc_port, $oslomsg_rpc_use_ssl)
+      $dms_client_db_url = $wlm_database_connection
+
         $memcached_hosts_real = any2array(pick($memcached_ips, $memcached_hosts))
         if $step >= 3 {
             if $memcached_ipv6 or $memcached_hosts_real[0] =~ Stdlib::Compat::Ipv6 {
@@ -71,6 +75,17 @@ class trilio::dmapi::config inherits trilio::dmapi {
           ensure  => present,
           content => template('trilio/start_triliovault_datamover_api_sh.erb'),
           mode   => '0755',
+      }
+
+      # DMS client config; ownership is set to dmapi by kolla permissions.
+      file { '/etc/triliovault-dms/':
+          ensure => 'directory',
+          mode   => '0755',
+      }->
+      file { '/etc/triliovault-dms/client.conf':
+          ensure  => present,
+          content => template('trilio/triliovault_dms_client_conf.erb'),
+          mode    => '0640',
       }
 
 

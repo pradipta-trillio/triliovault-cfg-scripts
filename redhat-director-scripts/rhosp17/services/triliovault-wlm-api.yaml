@@ -155,10 +155,10 @@ parameters:
       description: >
         The Ceph cluster name must be at least 1 character and contain only
         letters and numbers.
-  TrilioBackupTargets:
-    default: []
-    description: List of backup targets for TrilioVault
-    type: json
+  TrilioFailOnQgaFreezeFailure:
+    default: false
+    description: Fail the snapshot when the QEMU guest agent filesystem freeze fails
+    type: boolean
   CinderEnableRbdBackend:
     default: false
     description: Whether ceph cinder backend enabled or not
@@ -258,7 +258,7 @@ outputs:
         trilio::wlmapi::cloud_admin_password: {get_param: CloudAdminPassword}
         trilio::wlmapi::cloud_admin_project_name: {get_param: CloudAdminProjectName}
         trilio::wlmapi::cloud_admin_domain_name: {get_param: CloudAdminDomainName}
-        trilio::wlmapi::backup_targets: {get_param: TrilioBackupTargets}
+        trilio::wlmapi::fail_on_qga_freeze_failure: {get_param: TrilioFailOnQgaFreezeFailure}
         trilio::wlmapi::cinder_backend_ceph: {get_param: CinderEnableRbdBackend}
         trilio::wlmapi::ceph_cinder_user: {get_param: CephClientUserName}
         trilio::wlmapi::port: {get_param: WlmApiPort}
@@ -482,24 +482,9 @@ outputs:
                     - []
             environment:
                KOLLA_CONFIG_STRATEGY: COPY_ALWAYS
-          triliovault_wlm_api_cloud_trust_init:
-            start_order: 6
-            image: *triliovault_wlm_api_image
-            net: host
-            privileged: false
-            detach: false
-            user: root
-            volumes:
-              list_concat:
-                - {get_attr: [ContainersCommon, volumes]}
-                -
-                  - /var/lib/config-data/triliovaultwlmapi/etc/my.cnf.d/tripleo.cnf:/etc/my.cnf.d/tripleo.cnf:ro
-                  - /var/lib/config-data/triliovaultwlmapi/etc/triliovault-wlm/:/etc/triliovault-wlm/:ro
-                  - /var/lib/config-data/triliovaultwlmapi/opt/triliovault/:/opt/triliovault/
-                  - /var/log/containers/triliovault-wlm-api:/var/log/triliovault
-            command: "/usr/bin/bootstrap_host_exec triliovault_wlm_api /bin/bash -c '/opt/triliovault/create_wlm_cloud_trust.sh'"
-            environment:
-              TRIPLEO_DEPLOY_IDENTIFIER: {get_param: DeployIdentifier}
+      # No cloud-trust container: from 6.2 the cloud admin trust needs a backup
+      # target, which is created after deploy. Run it by hand once a target exists:
+      #   podman exec triliovault_wlm_api /opt/triliovault/create_wlm_cloud_trust.sh
       host_prep_tasks:
         - name: create triliovault wlm api log directory
           file:

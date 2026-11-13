@@ -1,0 +1,7 @@
+[DEFAULT]
+<% @s3vaultfuse_global_real.each do |key, value| -%>
+<%= key %> = <%= value %>
+<% end -%>
+
+[s3fuse_sys_admin]
+helper_command = sudo /usr/bin/trilio-dms-rootwrap /etc/triliovault-dms/rootwrap.conf privsep-helper

@@ -23,6 +23,9 @@ class trilio::dmapi (
   $memcached_ips                   = hiera('memcached_node_ips', undef),
   $my_ip                           = undef,	  
   $database_connection             = undef,
+  # DMS client: backup targets live in the workloadmgr DB, not the dmapi DB.
+  $wlm_database_connection         = undef,
+  $dms_node_id                     = hiera('nova::host', hiera('fqdn_canonical')),
   $project_domain_name             = 'Default',
   $project_name                    = 'service',
   $user_domain_name                = 'Default',

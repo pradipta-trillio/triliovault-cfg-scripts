@@ -11,8 +11,8 @@
 #   rhosp_release Release suffix matching the Dockerfile name, e.g. rhosp17.1
 #   container     (optional) Build only this container:
 #                   trilio-wlm | trilio-datamover-api |
-#                   trilio-datamover | trilio-horizon-plugin
-#                 If omitted, all 4 containers are built.
+#                   trilio-datamover | trilio-horizon-plugin | trilio-dms
+#                 If omitted, all 5 containers are built.
 #
 # Environment variables (required):
 #   RPM_REPO_URL  Trilio RPM repo baseurl, substituted into trilio.repo
@@ -31,13 +31,14 @@ Usage: $0 <tag> <rhosp_release> [container]
   tag           Docker image tag, e.g. tv7336
   rhosp_release Release suffix used in Dockerfile name, e.g. rhosp17.1
   container     (optional) Build and publish a single container.
-                If omitted, all 4 containers are built.
+                If omitted, all 5 containers are built.
 
 Containers:
   trilio-wlm              Workload Manager
   trilio-datamover-api    Control plane Datamover API
   trilio-datamover        Compute node Datamover
   trilio-horizon-plugin   OpenStack Horizon UI plugin
+  trilio-dms              Dynamic Mount Service (controller + compute)
 
 Environment variables (required):
   RPM_REPO_URL  Trilio RPM repo baseurl (substituted into trilio.repo)
@@ -75,7 +76,7 @@ if [ -z "${RPM_REPO_URL:-}" ]; then
     exit 1
 fi
 
-ALL_CONTAINERS=(trilio-wlm trilio-datamover-api trilio-datamover trilio-horizon-plugin)
+ALL_CONTAINERS=(trilio-wlm trilio-datamover-api trilio-datamover trilio-horizon-plugin trilio-dms)
 
 if [ -n "$SINGLE_CONTAINER" ]; then
     valid=0

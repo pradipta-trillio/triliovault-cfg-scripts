@@ -1,0 +1,75 @@
+FROM registry.redhat.io/rhosp-rhel9/openstack-base:17.1
+MAINTAINER TrilioData shyam.biradar@trilio.io
+
+LABEL name="trilio/openstack-triliodata-dms" \
+      maintainer="shyam.biradar@trilio.io" \
+      vendor="TrilioData" \
+      version="6.3.0" \
+      release="6.3" \
+      summary="Red Hat OpenStack Platform 17.1 TrilioData TrilioVault Dynamic Mount Service" \
+      description="Red Hat OpenStack Platform 17.1 TrilioData TrilioVault Dynamic Mount Service"
+
+# switch to root and install a custom RPM, etc.
+USER root
+
+## Setup repos
+RUN dnf clean all && dnf config-manager --set-disabled \*
+ADD trilio.repo /etc/yum.repos.d/
+
+RUN dnf config-manager \
+  --enable rhel-9-for-x86_64-baseos-aus-rpms \
+  --enable rhel-9-for-x86_64-appstream-aus-rpms \
+  --enable rhel-9-for-x86_64-highavailability-eus-rpms \
+  --enable openstack-17.1-for-rhel-9-x86_64-rpms \
+  --enable fast-datapath-for-rhel-9-x86_64-rpms
+
+RUN dnf install --releasever 9.6 -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm \
+    && sed -i 's/\$releasever/9/g' /etc/yum.repos.d/epel.repo \
+    && dnf config-manager --disable epel-cisco-openh264
+
+## Install important security patches
+RUN dnf --releasever 9.6 -y update-minimal --security --sec-severity=Important --sec-severity=Critical --nobest
+
+ENV TZ=Etc/UTC \
+    LIBGUESTFS_DEBUG=1 \
+    LIBGUESTFS_TRACE=1
+
+## nova must be 42436 to match the host and nova-compute, so mounts stay readable
+RUN (getent group nova >/dev/null || groupadd -g 42436 nova) \
+    && (id nova >/dev/null 2>&1 || useradd -u 42436 -g 42436 -m -s /bin/bash nova) \
+    && usermod -u 42436 nova && groupmod -g 42436 nova && usermod -aG kolla nova
+
+## Install Trilio DMS packages (eventlet comes from the openstack-17.1 repo)
+RUN dnf install --releasever 9.6 -y python3-pip nfs-utils fuse fuse-libs \
+    && dnf install --releasever 9.6 -y python3-trilio-dms-el9 python3-s3fuse-plugin-el9 nbdkit trilio-streaming-tools-el9 \
+    && ldconfig
+
+RUN dnf erase --releasever 9.6 -y epel-release
+
+## Azure Blob backup targets
+RUN pip3 install --upgrade pip && pip3 install azure-storage-blob==12.25.1 azure-core loguru
+
+## Create conf directories. /run/dms is NOT created here: it lives on the host
+## (tmpfiles.d) and the container bind-mounts /run (TVAULT-7655).
+RUN mkdir -p /etc/triliovault-dms/client.conf.d /etc/triliovault-object-store /var/log/triliovault \
+      /var/triliovault /var/lib/nova/triliovault-mounts \
+    && chown -R nova:nova /etc/triliovault-dms /etc/triliovault-object-store /var/log/triliovault \
+      /var/triliovault /var/lib/nova/triliovault-mounts
+
+RUN echo "user_allow_other" > /etc/fuse.conf
+
+##Disable repos and Clean subscription
+RUN dnf config-manager \
+  --disable rhel-9-for-x86_64-baseos-aus-rpms \
+  --disable rhel-9-for-x86_64-appstream-aus-rpms \
+  --disable rhel-9-for-x86_64-highavailability-eus-rpms \
+  --disable openstack-17.1-for-rhel-9-x86_64-rpms \
+  --disable fast-datapath-for-rhel-9-x86_64-rpms \
+  && dnf clean all
+
+##Add license
+RUN mkdir -p /licenses
+COPY licensing.txt /licenses
+
+##Become nova user for further operations
+USER nova

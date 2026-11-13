@@ -1,5 +1,4 @@
 class trilio::contego (
-    $backup_targets                       = [],
     $database_connection                  = undef,
     $oslomsg_rpc_proto                    = hiera('oslo_messaging_rpc_scheme', 'rabbit'),
     $oslomsg_rpc_hosts                    = any2array(hiera('oslo_messaging_rpc_node_names', undef)),
@@ -38,14 +37,6 @@ class trilio::contego (
     }
     else {
            $openstack_release = 'premitaka'
-    }
-
-
-##Set object_store_ext
-
-    if $backup_target_type == 's3' {
-        $contego_ext_object_store = "${contego_virtenv_dir}/lib/python2.7/site-packages/contego/nova/extension/driver/s3vaultfuse.py"
-
     }
 
     class {'trilio::contego::config': }

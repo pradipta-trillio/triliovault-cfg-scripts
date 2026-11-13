@@ -1,21 +1,5 @@
-<% require 'base64' %>
 #!/bin/bash
 set -ex
-<% @backup_targets.each do |target| -%>
-<% if target['backup_target_type'] == 'nfs' -%>
-  <% if target.key?('is_multi_ip_nfs') && target['is_multi_ip_nfs'] -%>
-    <% nfs_share = target['multi_ip_nfs_map'][@hostname] -%>
-  <% else -%>
-    <% nfs_share = target['nfs_shares'] -%>
-  <% end -%>
-<% nfs_dir = nfs_share.split(':')[1] -%>
-<% base64_mount_point = Base64.strict_encode64(nfs_dir) -%>
-<% nfs_options = target['nfs_options'] -%>
-mkdir -p <%= @vault_data_dir %>/<%= base64_mount_point %>
-sudo /usr/bin/workloadmgr-rootwrap /etc/triliovault-wlm/rootwrap.conf mount -t nfs <%= nfs_share %> <%= @vault_data_dir %>/<%= base64_mount_point %> -o <%= nfs_options %>
-<% end -%>
-
-<% end -%>
 ## Start triliovaut-wlm-api service
 /usr/bin/python3 /usr/bin/workloadmgr-api \
   --config-file=/etc/triliovault-wlm/triliovault-wlm.conf \

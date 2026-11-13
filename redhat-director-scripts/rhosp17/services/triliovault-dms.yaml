@@ -1,0 +1,152 @@
+heat_template_version: wallaby
+
+description: >
+  Trilio DMS (Dynamic Mount Service) containerized service. Mounts backup
+  targets on demand for WLM (controllers) and the datamover (computes), so it
+  must be added to every role that runs TrilioWlm* or TrilioDatamover.
+parameters:
+  ContainerTriliovaultDmsImage:
+    default: ''
+    description: The location of Trilio DMS container image
+    type: string
+  ServiceData:
+    default: {}
+    description: Dictionary packing service data
+    type: json
+  ServiceNetMap:
+    default: {}
+    description: Mapping of service_name -> network name. Typically set
+                 via parameter_defaults in the resource registry.  This
+                 mapping overrides those in ServiceNetMapDefaults.
+    type: json
+  DefaultPasswords:
+    default: {}
+    type: json
+  RoleName:
+    default: ''
+    description: Role name on which the service is applied
+    type: string
+  RoleParameters:
+    default: {}
+    description: Parameters specific to the role
+    type: json
+  EndpointMap:
+    default: {}
+    description: Mapping of service endpoint -> protocol. Typically set
+                 via parameter_defaults in the resource registry.
+    type: json
+  TrilioDmsWorkerThreads:
+    default: 10
+    description: Parallel DMS worker threads, one per (host, backup target) pair being mounted
+    type: number
+  TrilioDmsRabbitQueueType:
+    default: 'classic'
+    description: Queue type DMS declares on the overcloud RabbitMQ. Must match the cloud (classic on RHOSP 17.1)
+    type: string
+    constraints:
+    - allowed_values: ['classic', 'quorum']
+  TrilioDmsRabbitQueueDurable:
+    default: false
+    description: Whether the DMS queues are durable
+    type: boolean
+  TrilioDmsBarbicanSslVerify:
+    default: true
+    description: Verify Barbican's TLS certificate when DMS fetches S3 backup target credentials
+    type: boolean
+  TrilioS3VaultFuseGlobal:
+    default: {}
+    description: >
+      Overrides for /etc/triliovault-dms/s3vaultfuse-global.conf [DEFAULT], e.g.
+      {vault_s3_max_pool_connections: 100}. Applies to every S3 mount DMS creates.
+    type: json
+
+resources:
+
+  ContainersCommon:
+    type: /usr/share/openstack-tripleo-heat-templates/deployment/containers-common.yaml
+
+outputs:
+  role_data:
+    description: Role data for the Trilio DMS role.
+    value:
+      service_name: triliovault_dms
+      config_settings:
+        trilio::dms::auth_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
+        trilio::dms::worker_threads: {get_param: TrilioDmsWorkerThreads}
+        trilio::dms::rabbitmq_queue_type: {get_param: TrilioDmsRabbitQueueType}
+        trilio::dms::rabbitmq_queue_durable: {get_param: TrilioDmsRabbitQueueDurable}
+        trilio::dms::barbican_ssl_verify: {get_param: TrilioDmsBarbicanSslVerify}
+        trilio::dms::s3vaultfuse_global: {get_param: TrilioS3VaultFuseGlobal}
+      puppet_config:
+        config_volume: triliovaultdms
+        puppet_tags: dmsconfig
+        step_config: |
+            include ::trilio::dms
+        config_image: {get_param: ContainerTriliovaultDmsImage}
+      kolla_config:
+        /var/lib/kolla/config_files/triliovault_dms.json:
+          command: /usr/bin/python3 /usr/bin/trilio-dms-server --config-file /etc/triliovault-dms/server.conf
+          config_files:
+            - source: "/var/lib/kolla/config_files/triliovaultdms/*"
+              dest: "/"
+              merge: true
+              preserve_properties: true
+          permissions:
+            - path: /var/log/triliovault
+              owner: nova:nova
+              recurse: true
+      docker_config:
+        step_5:
+          triliovault_dms:
+            # Earliest batch, ahead of wlm-api (5). No hard dependency: DMS only
+            # has to be listening before the first mount request.
+            start_order: 0
+            image: {get_param: ContainerTriliovaultDmsImage}
+            net: host
+            # Host IPC so FUSE mounts are visible to qemu outside the container.
+            ipc: host
+            privileged: true
+            user: nova
+            restart: always
+            volumes:
+              list_concat:
+                - {get_attr: [ContainersCommon, volumes]}
+                -
+                  - /var/lib/kolla/config_files/triliovault_dms.json:/var/lib/kolla/config_files/config.json:ro
+                  - /var/lib/config-data/puppet-generated/triliovaultdms/:/var/lib/kolla/config_files/triliovaultdms:ro
+                  - /var/log/containers/triliovault-dms:/var/log/triliovault:z
+                  # Mounts land in /var/lib/nova/triliovault-mounts and must
+                  # propagate to nova, the datamover and WLM.
+                  - /var/lib/nova:/var/lib/nova:shared
+                  # Host /run, so /run/dms comes from tmpfiles.d (TVAULT-7655).
+                  - /run:/run
+                  - /dev:/dev
+                  - /lib/modules:/lib/modules:ro
+            environment:
+              KOLLA_CONFIG_STRATEGY: COPY_ALWAYS
+      host_prep_tasks:
+        - name: create trilio dms directories
+          file:
+            path: "{{ item.path }}"
+            state: directory
+            setype: "{{ item.setype }}"
+          with_items:
+            - { 'path': /var/lib/nova/triliovault-mounts, 'setype': svirt_sandbox_file_t }
+            - { 'path': /var/log/containers/triliovault-dms, 'setype': svirt_sandbox_file_t }
+        # /run is tmpfs, so a one-shot mkdir is lost on reboot. The age field
+        # must stay "-", or systemd-tmpfiles-clean removes live pid/lock files.
+        - name: install trilio dms tmpfiles.d entry
+          copy:
+            dest: /etc/tmpfiles.d/trilio-dms.conf
+            owner: root
+            group: root
+            mode: '0644'
+            content: |
+              d /run/dms           0755 42436 42436 -
+              d /run/dms/s3        0755 42436 42436 -
+              d /run/dms/certs     0700 42436 42436 -
+              d /run/dms/locks     0755 42436 42436 -
+              d /run/dms/instances 0755 42436 42436 -
+        - name: create trilio dms runtime directories
+          command: systemd-tmpfiles --create /etc/tmpfiles.d/trilio-dms.conf
+      upgrade_tasks: []

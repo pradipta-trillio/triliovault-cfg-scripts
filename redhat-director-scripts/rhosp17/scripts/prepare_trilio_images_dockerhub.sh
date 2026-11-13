@@ -37,13 +37,20 @@ podman pull docker.io/trilio/trilio-wlm:${tag}
 podman tag docker.io/trilio/trilio-wlm:${tag} ${undercloud_hostname}:8787/trilio/trilio-wlm:${tag}
 openstack tripleo container image push --local ${undercloud_hostname}:8787/trilio/trilio-wlm:${tag}
 
+## Prepare trilio dms container
+podman pull docker.io/trilio/trilio-dms:${tag}
+podman tag docker.io/trilio/trilio-dms:${tag} ${undercloud_hostname}:8787/trilio/trilio-dms:${tag}
+openstack tripleo container image push --local ${undercloud_hostname}:8787/trilio/trilio-dms:${tag}
+
 ## Update image locations in env file
 trilio_dm_image="${undercloud_hostname}:8787\/trilio\/trilio-datamover:${tag}"
 trilio_dmapi_image="${undercloud_hostname}:8787\/trilio\/trilio-datamover-api:${tag}"
 trilio_wlmapi_image="${undercloud_hostname}:8787\/trilio\/trilio-wlm:${tag}"
+trilio_dms_image="${undercloud_hostname}:8787\/trilio\/trilio-dms:${tag}"
 trilio_horizon_image="${undercloud_hostname}:8787\/trilio\/trilio-horizon-plugin:${tag}"
 
 sed  -i "s/.*ContainerTriliovaultDatamoverImage.*/\   ContainerTriliovaultDatamoverImage:\ ${trilio_dm_image}/g" $SCRIPT_DIR/../environments/trilio_env.yaml
 sed  -i "s/.*ContainerTriliovaultDatamoverApiImage.*/   ContainerTriliovaultDatamoverApiImage: ${trilio_dmapi_image}/g" $SCRIPT_DIR/../environments/trilio_env.yaml
 sed  -i "s/.*ContainerTriliovaultWlmImage.*/   ContainerTriliovaultWlmImage: ${trilio_wlmapi_image}/g" $SCRIPT_DIR/../environments/trilio_env.yaml
+sed  -i "s/.*ContainerTriliovaultDmsImage.*/   ContainerTriliovaultDmsImage: ${trilio_dms_image}/g" $SCRIPT_DIR/../environments/trilio_env.yaml
 sed  -i "s/.*ContainerHorizonImage.*/   ContainerHorizonImage: ${trilio_horizon_image}/g" $SCRIPT_DIR/../environments/trilio_env.yaml

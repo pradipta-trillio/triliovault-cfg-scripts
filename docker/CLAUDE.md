@@ -21,9 +21,10 @@ docker/
 │   ├── trilio-horizon-plugin/
 │   └── trilio-wlm/
 │
-└── redhat-director-scripts/docker/ # Images for RHOSP 16, TripleO Train/Wallaby
+└── redhat-director-scripts/docker/ # Images for RHOSP 16/17.1, RHOSO 18, TripleO Train/Wallaby
     ├── trilio-datamover-api/
     ├── trilio-datamover/
+    ├── trilio-dms/                 # DMS server: Dockerfile (RHOSO 18), Dockerfile_rhosp17.1
     ├── trilio-horizon-plugin/
     └── trilio-wlm/
 ```

@@ -1,0 +1,31 @@
+[server]
+# RabbitMQ connection - the overcloud RPC broker, identical to the DMS client URL
+rabbitmq_url = <%= @dms_rabbitmq_url %>
+
+rabbitmq_queue_type = <%= @rabbitmq_queue_type %>
+rabbitmq_queue_durable = <%= @rabbitmq_queue_durable_real ? 'true' : 'false' %>
+
+# Node identifier. Must match OS-EXT-SRV-ATTR:host from 'openstack server show'
+# (the nova-compute host value); DMAPI addresses mount requests to dms.<node_id>.
+node_id = <%= @node_id %>
+
+# Keystone auth URL
+auth_url = <%= @auth_url %>
+
+# Barbican SSL verification and CA bundle (used when fetching S3 credentials)
+barbican_ssl_verify = <%= @barbican_ssl_verify_real ? 'True' : 'False' %>
+<% if @barbican_ssl_verify_real -%>
+barbican_ca_bundle = <%= @barbican_ca_bundle %>
+<% end -%>
+
+log_level = <%= @log_level %>
+log_file = /var/log/triliovault/trilio-dms-server.log
+log_max_bytes = 26214400
+log_backup_count = 5
+
+s3vaultfuse_bin = /usr/bin/s3vaultfuse.py
+rootwrap_bin = /usr/bin/trilio-dms-rootwrap
+rootwrap_conf = /etc/triliovault-dms/rootwrap.conf
+
+# Requests for different (host, backup_target_id) pairs run in parallel.
+worker_threads = <%= @worker_threads %>

@@ -1,0 +1,163 @@
+---
+# cleanup_backup_targets.yml
+#
+# Removes the T4O <= 6.1 backup-target plumbing from RHOSP 17.1 controllers and
+# computes when upgrading to T4O 6.3, where backup targets are mounted on demand
+# by the Trilio DMS service instead:
+#   - triliovault_object_store_<target> containers, their tripleo_* systemd
+#     units and health checks (6.0/6.1 S3 targets)
+#   - S3 FUSE and NFS mounts under the mount root, made by the old object-store
+#     containers and by the old WLM/datamover start scripts (5.2 and 6.x)
+#   - the object-store kolla/startup/puppet config TripleO left behind
+#
+# Run from the undercloud AFTER the stop scripts and BEFORE the 6.3 overcloud
+# deploy, so DMS starts on a clean mount tree:
+#
+#   ansible-playbook -i ~/overcloud-deploy/<stack>/tripleo-ansible-inventory.yaml \
+#     cleanup_backup_targets.yml
+#
+# Optional extra vars:
+#   cleanup_hosts   host pattern (default: Controller:Compute; add custom roles)
+#   vault_data_dir  mount root (default: /var/lib/nova/triliovault-mounts)
+#   force           true = run even if the 6.3 DMS container is already up. Its
+#                   live mounts would be unmounted too, so avoid it.
+
+- name: Remove T4O <= 6.1 backup target plumbing
+  hosts: "{{ cleanup_hosts | default('Controller:Compute') }}"
+  become: true
+  gather_facts: false
+  vars:
+    mount_root: "{{ vault_data_dir | default('/var/lib/nova/triliovault-mounts') }}"
+
+  tasks:
+    - name: Check whether the T4O 6.3 DMS container is already running
+      command: podman ps --filter name=^triliovault_dms$ --format '{{ "{{" }}.Names{{ "}}" }}'
+      register: dms_running
+      changed_when: false
+      failed_when: false
+
+    - name: Refuse to unmount live DMS mounts
+      fail:
+        msg: >-
+          triliovault_dms is running on {{ inventory_hostname }}. Run this playbook
+          before the 6.3 overcloud deploy, or pass -e force=true to unmount anyway.
+      when:
+        - dms_running.stdout | trim | length > 0
+        - not (force | default(false) | bool)
+
+    # Unmount before stopping the containers that own the mounts: stopping a
+    # FUSE owner first leaves a hung mount. FSTYPE is matched exactly so a path
+    # that merely contains "nfs" or "fuse" is never touched.
+    - name: Lazy unmount S3 FUSE mounts under the mount root
+      shell: |
+        findmnt -r -n -o TARGET,FSTYPE | grep "^{{ mount_root }}/" | awk '$2 ~ /^fuse/ {print $1}' | sort -r | while read -r mnt; do
+          echo "unmounting $mnt"
+          umount -l "$mnt" || true
+        done
+      args:
+        executable: /bin/bash
+      register: fuse_unmounts
+      changed_when: fuse_unmounts.stdout | length > 0
+
+    - name: Lazy unmount NFS mounts under the mount root
+      shell: |
+        findmnt -r -n -o TARGET,FSTYPE | grep "^{{ mount_root }}/" | awk '($2 == "nfs" || $2 == "nfs4") {print $1}' | sort -r | while read -r mnt; do
+          echo "unmounting $mnt"
+          umount -l -f "$mnt" || true
+        done
+      args:
+        executable: /bin/bash
+      register: nfs_unmounts
+      changed_when: nfs_unmounts.stdout | length > 0
+
+    - name: Find object-store systemd units (service and health check)
+      shell: >
+        systemctl list-units --all --plain --no-legend 'tripleo_triliovault_object_store*' | awk '{print $1}';
+        systemctl list-unit-files --no-legend 'tripleo_triliovault_object_store*' | awk '{print $1}'
+      args:
+        executable: /bin/bash
+      register: os_units
+      changed_when: false
+      failed_when: false
+
+    - name: Stop and disable object-store systemd units
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      loop: "{{ os_units.stdout_lines | unique }}"
+      failed_when: false
+
+    - name: Find object-store containers
+      command: podman ps -a --filter name=triliovault_object_store --format '{{ "{{" }}.Names{{ "}}" }}'
+      register: os_containers
+      changed_when: false
+      failed_when: false
+
+    - name: Remove object-store containers
+      command: podman rm -f "{{ item }}"
+      loop: "{{ os_containers.stdout_lines }}"
+      failed_when: false
+
+    - name: Find object-store unit, kolla and startup config files
+      find:
+        paths:
+          - /etc/systemd/system
+          - /var/lib/kolla/config_files
+          - /var/lib/tripleo-config/container-startup-config
+          - /var/lib/tripleo-config/container-puppet-config
+        patterns:
+          - "tripleo_triliovault_object_store*"
+          - "triliovault_object_store*.json"
+          - "container-puppet-triliovaultobjectstore.json"
+        recurse: true
+        # *.wants/ entries are symlinks
+        file_type: any
+      register: os_files
+
+    - name: Remove object-store unit, kolla and startup config files
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ os_files.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Remove object-store puppet-generated config
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/config-data/triliovaultobjectstore
+        - /var/lib/config-data/triliovaultobjectstore.md5sum
+        - /var/lib/config-data/puppet-generated/triliovaultobjectstore
+        - /var/lib/config-data/puppet-generated/triliovaultobjectstore.md5sum
+
+    - name: Reload systemd and clear failed object-store units
+      shell: |
+        systemctl daemon-reload
+        systemctl reset-failed 'tripleo_triliovault_object_store*' 2>/dev/null || true
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    # The mount root itself stays: WLM, the datamover and DMS all use it.
+    - name: Remove empty mount points left under the mount root
+      shell: find "{{ mount_root }}" -mindepth 1 -maxdepth 2 -type d -empty -delete 2>/dev/null || true
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: List mounts still under the mount root
+      shell: findmnt -r -n -o TARGET,FSTYPE,SOURCE | grep "^{{ mount_root }}/" || true
+      args:
+        executable: /bin/bash
+      register: remaining_mounts
+      changed_when: false
+
+    - name: Report
+      debug:
+        msg: >-
+          {{ 'Cleanup complete; nothing mounted under ' ~ mount_root
+             if remaining_mounts.stdout_lines | length == 0
+             else 'Still mounted under ' ~ mount_root ~ ': ' ~ (remaining_mounts.stdout_lines | join(', ')) }}

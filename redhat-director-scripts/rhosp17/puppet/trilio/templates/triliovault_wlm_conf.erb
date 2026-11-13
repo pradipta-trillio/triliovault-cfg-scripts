@@ -1,6 +1,6 @@
 [DEFAULT]
 triliovault_hostnames = <%= @my_ip %>
-enabled_backends = <%= @enabled_backends %>
+enabled_backends = ""
 api_paste_config = /etc/triliovault-wlm/api-paste.ini
 api_workers = 4
 cloud_admin_role = admin
@@ -13,6 +13,7 @@ keystone_auth_version = 3
 log_config_append = /etc/triliovault-wlm/wlm_logging.conf
 max_wait_for_upload = 48
 neutron_api_insecure = false
+fail_on_qga_freeze_failure = <%= @fail_on_qga_freeze_failure %>
 
 cloud_unique_id =
 <% if @interface == "public" -%>
@@ -54,47 +55,6 @@ vault_data_directory = <%= @vault_data_dir %>
 vault_data_directory_old = /var/triliovault
 
 workloads_workers = 4
-
-
-
-
-<% @backup_targets.each do |target| -%>
-[<%= target['backup_target_name'] %>]
-<% if target['backup_target_type'] == 's3' %>
-vault_storage_type = s3
-vault_s3_endpoint_url = <%= target['s3_endpoint_url'] %>
-vault_s3_bucket = <%= target['s3_bucket'] %>
-<% if target['s3_bucket_object_lock_enabled'] %>
-immutable = 1
-<% else -%>
-immutable = 0
-<% end %>
-<% if target['s3_type'] == 'amazon_s3' %>
-vault_storage_filesystem_export = <%= target['s3_bucket'] %>
-<% else -%>
-<% s3_endpoint_domain_name = target['s3_endpoint_url'].gsub(/^https?:\/\//, '').gsub(/\/$/, '') %>
-vault_storage_filesystem_export = <%= s3_endpoint_domain_name %>/<%= target['s3_bucket'] %>
-<% end %>
-<% else -%>
-vault_storage_type = nfs
-  <% if target.key?('is_multi_ip_nfs') && target['is_multi_ip_nfs'] -%>
-    <% nfs_share = target['multi_ip_nfs_map'][@hostname] -%>
-  <% else -%>
-    <% nfs_share = target['nfs_shares'] -%>
-  <% end -%>
-
-vault_storage_filesystem_export = <%= nfs_share %>
-vault_storage_nfs_options = <%= target['nfs_options'] %>
-<% end %>
-<% if target['is_default'] %>
-is_default = 1
-<% else -%>
-is_default = 0
-<% end %>
-<% end -%>
-
-
-
 
 [alembic]
 script_location = /usr/share/workloadmgr/migrate_repo

@@ -92,6 +92,18 @@ parameters:
     description: The password for the Triliovault Datamover service's Database user
     type: string
     hidden: true
+  WlmApiDbName:
+    type: string
+    default: 'workloadmgr'
+    description: Database name for TrilioVault Wlm Service (read by the DMS client)
+  WlmApiDbUserName:
+    type: string
+    default: 'workloadmgr'
+    description: Database user name for TrilioVault Wlm Service (read by the DMS client)
+  WlmApiDbUserPassword:
+    description: The password for the Triliovault wlm service's Database user
+    type: string
+    hidden: true
   NotificationDriver:
     type: string
     default: 'messagingv2'
@@ -208,6 +220,17 @@ outputs:
                 template: "/$DATAMOVER_DB_NAME"
                 params:
                   $DATAMOVER_DB_NAME: {get_param: DatamoverApiDbName}
+        trilio::dmapi::wlm_database_connection:
+          make_url:
+            scheme: {get_param: [EndpointMap, MysqlInternal, protocol]}
+            username: {get_param: WlmApiDbUserName}
+            password: {get_param: WlmApiDbUserPassword}
+            host: {get_param: [EndpointMap, MysqlInternal, host]}
+            path:
+              str_replace:
+                template: "/$WLM_DB_NAME"
+                params:
+                  $WLM_DB_NAME: {get_param: WlmApiDbName}
         trilio::dmapi::my_ip:
             str_replace:
               template:
@@ -270,6 +293,9 @@ outputs:
               preserve_properties: true
           permissions:
             - path: /var/log/triliovault
+              owner: dmapi:dmapi
+              recurse: true
+            - path: /etc/triliovault-dms
               owner: dmapi:dmapi
               recurse: true
       container_puppet_tasks:
